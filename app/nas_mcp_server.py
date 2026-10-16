@@ -358,97 +358,26 @@ def execute_manage_docker_container(args: Dict[str, Any]) -> Dict[str, Any]:
         return {"status": "error", "message": f"Docker 运维执行失败: {str(e)}"}
 
 def execute_manage_aria2_download(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Aria2 任务调度"""
-    action = args.get("action")
-    url = (args.get("url") or "").strip()
-    gid = (args.get("gid") or "").strip()
-
+    """Aria2 离线下载插件调度"""
     try:
-        from app.aria2_tool import rpc_call, format_bytes
+        from app.plugins import aria2_plugin
     except ImportError:
         try:
-            import aria2_tool
-            rpc_call = aria2_tool.rpc_call
-            format_bytes = aria2_tool.format_bytes
+            from plugins import aria2_plugin
         except Exception as e:
-            return {"status": "error", "message": f"无法载入 aria2_tool 模块: {e}"}
-
-    if action == "status":
-        active = rpc_call("aria2.tellActive", [["gid", "status", "totalLength", "completedLength", "downloadSpeed", "files"]])
-        waiting = rpc_call("aria2.tellWaiting", [0, 5, ["gid", "status", "totalLength", "completedLength", "files"]])
-        stopped = rpc_call("aria2.tellStopped", [0, 5, ["gid", "status", "totalLength", "completedLength", "files", "errorMessage"]])
-        
-        stat = rpc_call("aria2.getGlobalStat")
-        speed_str = format_bytes(stat.get("downloadSpeed", 0)) + "/s" if isinstance(stat, dict) else "0 B/s"
-
-        return {
-            "status": "success",
-            "global_download_speed": speed_str,
-            "active_tasks": active if isinstance(active, list) else [],
-            "waiting_tasks": waiting if isinstance(waiting, list) else [],
-            "stopped_tasks": stopped if isinstance(stopped, list) else []
-        }
-    elif action == "add":
-        if not url:
-            return {"status": "error", "message": "必须提供下载链接 (url)"}
-        res = rpc_call("aria2.addUri", [[url]])
-        if isinstance(res, dict) and "error" in res:
-            return {"status": "error", "message": res["error"]}
-        return {"status": "success", "gid": res, "message": "已成功将下载任务提交至 Aria2 队列。"}
-    elif action == "pause":
-        if not gid:
-            return {"status": "error", "message": "必须提供任务 GID"}
-        res = rpc_call("aria2.pause", [gid])
-        return {"status": "success", "result": res}
-    elif action == "unpause":
-        if not gid:
-            return {"status": "error", "message": "必须提供任务 GID"}
-        res = rpc_call("aria2.unpause", [gid])
-        return {"status": "success", "result": res}
-    return {"status": "error", "message": f"未知 Aria2 动作: {action}"}
+            return {"status": "error", "message": f"无法载入 aria2_plugin 模块: {e}"}
+    return aria2_plugin.execute(args)
 
 def execute_manage_firewall_security(args: Dict[str, Any]) -> Dict[str, Any]:
     """Fail2ban 安全防火墙查询与解封"""
-    action = args.get("action")
-    target_ip = (args.get("ip") or "").strip()
-    jail = (args.get("jail") or "caddy-services").strip()
-
     try:
-        import docker
-        client = docker.from_env()
-        guard = client.containers.get("security-guard")
-
-        if action == "status":
-            cmd = f"fail2ban-client status {jail}"
-            exec_res = guard.exec_run(cmd)
-            out = exec_res.output.decode("utf-8", errors="replace")
-            
-            banned_match = re.search(r'Banned IP list:\s*(.*)', out)
-            banned_ips = banned_match.group(1).strip().split() if banned_match else []
-            
-            return {
-                "status": "success",
-                "jail": jail,
-                "banned_count": len(banned_ips),
-                "banned_ips": banned_ips,
-                "raw_summary": out.strip()
-            }
-        elif action == "unban":
-            if not target_ip:
-                return {"status": "error", "message": "解封必须提供目标 IP"}
-            cmd = f"fail2ban-client set {jail} unbanip {target_ip}"
-            exec_res = guard.exec_run(cmd)
-            out = exec_res.output.decode("utf-8", errors="replace").strip()
-            return {
-                "status": "success",
-                "target_ip": target_ip,
-                "jail": jail,
-                "result": out,
-                "message": f"IP `{target_ip}` 已在 `{jail}` 规则链中执行解封。"
-            }
-        return {"status": "error", "message": f"未知动作: {action}"}
-    except Exception as e:
-        return {"status": "error", "message": f"防火墙指令执行失败: {str(e)}"}
+        from app.plugins import firewall_plugin
+    except ImportError:
+        try:
+            from plugins import firewall_plugin
+        except Exception as e:
+            return {"status": "error", "message": f"无法载入 firewall_plugin 模块: {e}"}
+    return firewall_plugin.execute(args)
 
 def extract_clean_article_text(url: str, timeout: float = 2.5) -> str:
     """快速抓取单个目标网页并提取纯净核心正文（剔除广告、样式、导航与页脚）"""
@@ -526,34 +455,15 @@ def execute_search_web_info(args: Dict[str, Any]) -> Dict[str, Any]:
         return {"status": "error", "message": f"联网检索失败: {str(e)}"}
 
 def execute_manage_pc_power(args: Dict[str, Any]) -> Dict[str, Any]:
-    """PC 电源网络控制"""
-    action = args.get("action")
-    base_dir = "/app/app" if os.path.exists("/app/app") else os.path.dirname(__file__)
-
-    if action == "wake":
-        script_path = os.path.join(base_dir, "wake-win")
-        if not os.path.exists(script_path):
-            return {"status": "error", "message": f"未找到 wake-win 脚本: {script_path}"}
-        res = subprocess.run(["bash", script_path], capture_output=True, text=True, timeout=10)
-        return {
-            "status": "success" if res.returncode == 0 else "error",
-            "output": res.stdout.strip() or res.stderr.strip(),
-            "message": "已向 Windows PC 发送 Magic Packet 唤醒魔包。"
-        }
-    elif action in ["sleep", "shutdown"]:
-        script_path = os.path.join(base_dir, "shutdown-win")
-        if not os.path.exists(script_path):
-            return {"status": "error", "message": f"未找到 shutdown-win 脚本: {script_path}"}
-        cmd = ["bash", script_path]
-        if action == "sleep":
-            cmd.append("--sleep")
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-        return {
-            "status": "success" if res.returncode == 0 else "error",
-            "output": res.stdout.strip() or res.stderr.strip(),
-            "message": f"已向 Windows PC 发送远程{'睡眠' if action == 'sleep' else '关机'}指令。"
-        }
-    return {"status": "error", "message": f"未知动作: {action}"}
+    """PC 电源网络控制 (纯 Python WOL 唤醒与远程关机)"""
+    try:
+        from app.plugins import pc_power_plugin
+    except ImportError:
+        try:
+            from plugins import pc_power_plugin
+        except Exception as e:
+            return {"status": "error", "message": f"无法载入 pc_power_plugin 模块: {e}"}
+    return pc_power_plugin.execute(args)
 
 def execute_generate_daily_report() -> Dict[str, Any]:
     """生成全机健康巡检日报"""
@@ -602,7 +512,11 @@ def execute_generate_daily_report() -> Dict[str, Any]:
         else:
             report_lines.append("- ✅ 防火墙状态良好，无误封或积压攻击源。")
     else:
-        report_lines.append(f"- ⚠️ 防火墙巡检异常: {firewall_res.get('message')}")
+        msg = firewall_res.get('message', '')
+        if "未配置启用" in msg:
+            report_lines.append("- 💤 Fail2ban 防火墙未配置启用（可选）")
+        else:
+            report_lines.append(f"- ⚠️ 防火墙巡检异常: {msg}")
 
     report_lines.append("\n**4. 📥 离线下载吞吐**")
     if aria_res.get("status") == "success":
@@ -610,7 +524,11 @@ def execute_generate_daily_report() -> Dict[str, Any]:
         active = aria_res.get("active_tasks", [])
         report_lines.append(f"- **下载总吞吐**: `{speed}` | 活跃任务数: `{len(active)}`")
     else:
-        report_lines.append(f"- ⚠️ Aria2 状态未就绪: {aria_res.get('message')}")
+        msg = aria_res.get('message', '')
+        if "未配置启用" in msg:
+            report_lines.append("- 💤 Aria2 服务未配置启用（可选）")
+        else:
+            report_lines.append(f"- ⚠️ Aria2 状态未就绪: {msg}")
 
     full_md = "\n".join(report_lines)
     return {

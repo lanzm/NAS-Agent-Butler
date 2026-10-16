@@ -141,7 +141,7 @@ class AIAgent:
                     err_text = resp.text
                     logger.warning(f"模型调用返回 404: {err_text[:150]}")
                     if "no longer available" in err_text or "not found" in err_text.lower():
-                        for fallback_m in ["gemini-flash-lite-latest", "gemini-3.8-flash", "deepseek-v4-pro"]:
+                        for fallback_m in ["gemini-flash-lite-latest", "gemini-2.5-flash", "gpt-4o-mini", "deepseek-chat"]:
                             if req_payload.get("model") != fallback_m:
                                 logger.info(f"平滑切换至备选模型: {fallback_m}")
                                 req_payload["model"] = fallback_m

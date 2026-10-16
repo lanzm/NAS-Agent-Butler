@@ -6,7 +6,10 @@ plugins/firewall_plugin.py - Fail2ban 安全防火墙插件
 
 import os
 import re
-import docker
+try:
+    import docker
+except ImportError:
+    docker = None
 from typing import Dict, Any
 
 CONTAINER_NAME = os.getenv("FAIL2BAN_CONTAINER_NAME", "").strip()
@@ -43,6 +46,9 @@ TOOL_SPEC = {
 def execute(args: Dict[str, Any]) -> Dict[str, Any]:
     if not is_enabled():
         return {"status": "error", "message": "Fail2ban 插件未配置启用，请在 .env 中设置 FAIL2BAN_CONTAINER_NAME"}
+
+    if not docker:
+        return {"status": "error", "message": "Docker 模块未就绪"}
 
     action = args.get("action")
     target_ip = (args.get("ip") or "").strip()

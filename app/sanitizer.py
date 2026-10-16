@@ -12,8 +12,9 @@ SENSITIVE_KEY_PATTERN = re.compile(
     r'(?i)(password|passwd|pwd|pass|db_pass|secret|token|api_key|apikey|app_secret|bduss|access_token|auth|private_key)\s*([:=])\s*([\'"]?)([^\s\'",;]{2,})\3'
 )
 
-# 常见 API Key 与 Token 格式正则
+# 常见 API Key、私钥与 Token 格式正则
 TOKEN_PATTERNS = [
+    (re.compile(r'-----BEGIN [A-Z\s]+ PRIVATE KEY-----[\s\S]*?-----END [A-Z\s]+ PRIVATE KEY-----'), '[PROTECTED_PRIVATE_KEY]'),
     (re.compile(r'sk-[a-zA-Z0-9_-]{16,}'), '[PROTECTED_API_KEY]'),
     (re.compile(r'nvapi-[a-zA-Z0-9_-]{16,}'), '[PROTECTED_NV_KEY]'),
     (re.compile(r'Bearer\s+[a-zA-Z0-9_\-\.]{15,}'), 'Bearer [PROTECTED_TOKEN]'),
