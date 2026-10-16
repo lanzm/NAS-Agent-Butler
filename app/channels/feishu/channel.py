@@ -405,7 +405,9 @@ class FeishuChannel(BaseChannel):
                 anim_poke_event.set()
                 if anim_thread:
                     anim_thread.join(timeout=0.6)
-                err_card = build_message_card("🎤 语音未能识别", "未能清晰识别到有效语音内容，请靠近麦克风或打字输入。", template="orange")
+                card_title = "🎤 语音识别接口异常" if asr_err else "🎤 语音未能识别"
+                card_content = asr_err or "未能清晰识别到有效语音内容，请靠近麦克风或打字输入。"
+                err_card = build_message_card(card_title, card_content, template="orange")
                 if placeholder_msg_id:
                     if not self.patch_card(placeholder_msg_id, err_card):
                         self.reply_card(msg_id, err_card)

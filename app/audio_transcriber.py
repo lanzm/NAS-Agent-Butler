@@ -64,21 +64,26 @@ def transcribe_audio_with_gemini(audio_bytes: bytes) -> Tuple[Optional[str], Opt
 
         resp = requests.post(url, json=payload, timeout=30)
         if resp.status_code != 200:
-            logger.error(f"Gemini 语音识别接口失败 [code={resp.status_code}]: {resp.text[:150]}")
-            return None, f"语音识别接口异常 (状态码 {resp.status_code})"
+            try:
+                err_json = resp.json()
+                err_detail = err_json.get("error", {}).get("message") or err_json.get("message") or resp.text[:150]
+            except Exception:
+                err_detail = resp.text[:150]
+            logger.warning(f"语音识别接口未成功 [code={resp.status_code}]: {err_detail}")
+            return None, f"语音识别接口响应异常 [HTTP {resp.status_code}]：`{err_detail}`\n> 提示：当前配置的 AI 模型可能不支持音频多模态转写，建议直接在聊天框中发送文字交流。"
 
         res_json = resp.json()
         candidates = res_json.get("candidates", [])
         if not candidates:
-            return None, "未解析到转录内容"
+            return None, "未能解析到有效转录内容，请靠近麦克风或重新录音。"
 
         parts = candidates[0].get("content", {}).get("parts", [])
         if not parts:
-            return None, "转录结果为空"
+            return None, "转录结果为空，请重新录音。"
 
         transcribed = parts[0].get("text", "").strip()
         return transcribed, None
 
     except Exception as e:
-        logger.error(f"语音识别转写异常: {e}")
-        return None, str(e)
+        logger.warning(f"语音识别转写遇到异常: {e}")
+        return None, "当前配置的 AI 模型暂不支持语音识别，请在聊天框中直接发送文字交流。"

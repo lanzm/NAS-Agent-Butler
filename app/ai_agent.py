@@ -21,10 +21,12 @@ try:
     from app.sanitizer import sanitize_text
     from app.mcp_client import MCPClient
     from app.trace_tracker import TraceTracker
+    from app.card_builder import clean_ai_content
 except ImportError:
     from sanitizer import sanitize_text
     from mcp_client import MCPClient
     from trace_tracker import TraceTracker
+    from card_builder import clean_ai_content
 
 logger = logging.getLogger("feishu-bot.agent")
 
@@ -40,66 +42,6 @@ STATUS_MAP = {
     "get_container_logs": "读取容器日志",
     "get_weather_calendar": "获取天气与日历",
 }
-
-
-def clean_ai_content(raw) -> str:
-    """清洗 AI 返回的内容，剥离 JSON 包装（如 {'type': 'text', 'text': ...}）与转义字符"""
-    if raw is None:
-        return ""
-    if not isinstance(raw, str):
-        if isinstance(raw, dict) and "text" in raw:
-            raw = str(raw["text"])
-        elif isinstance(raw, list):
-            texts = [item.get("text", "") for item in raw if isinstance(item, dict) and "text" in item]
-            if texts:
-                raw = "\n".join(texts)
-            else:
-                raw = str(raw)
-        else:
-            raw = str(raw)
-
-    text = raw.strip()
-
-    # 1. 优先尝试解析 JSON 结构
-    if (text.startswith("{") and text.endswith("}")) or (text.startswith("[") and text.endswith("]")):
-        try:
-            parsed = json.loads(text)
-            if isinstance(parsed, dict) and "text" in parsed:
-                text = str(parsed["text"]).strip()
-            elif isinstance(parsed, list):
-                texts = [item.get("text", "") for item in parsed if isinstance(item, dict) and "text" in item]
-                if texts:
-                    text = "\n".join(texts).strip()
-        except Exception:
-            pass
-
-    # 2. 正则兜底防御：若存在 "text": "..."
-    if text.startswith("{") and '"text"' in text:
-        try:
-            import re
-            m = re.search(r'"text"\s*:\s*"(.*)"', text, re.DOTALL)
-            if m:
-                text = m.group(1)
-        except Exception:
-            pass
-
-    # 3. 处理字面转义字符（如 \n, \t, \"）
-    if "\\n" in text:
-        text = text.replace("\\n", "\n")
-    if "\\t" in text:
-        text = text.replace("\\t", "\t")
-    if '\\"' in text:
-        text = text.replace('\\"', '"')
-
-    # 4. 若大模型将整个回答包裹在 ```markdown ... ``` 或 ```text ... ``` 代码块中，剥离外层代码块外壳
-    if text.startswith("```") and text.endswith("```"):
-        lines = text.split("\n")
-        if len(lines) >= 2:
-            first_line = lines[0].strip().lower()
-            if first_line in ["```", "```markdown", "```md", "```text"]:
-                text = "\n".join(lines[1:-1]).strip()
-
-    return text.strip()
 
 
 class AIAgent:
@@ -120,9 +62,10 @@ class AIAgent:
         return bool(self.api_key and self.api_base)
 
     def _call_model(self, url: str, headers: dict, payload: dict, retries: int = 4) -> tuple:
-        """发起大模型标准非流式请求，一次性稳定解析原生完整 JSON，杜绝流式拼接产生的工具名连体婴与字段丢失 Bug。返回: (message_dict, usage_dict)"""
+        """发起大模型标准非流式请求。返回: (message_dict, usage_dict, error_msg)"""
         req_payload = dict(payload)
         req_payload["stream"] = False
+        last_error = ""
 
         for attempt in range(retries):
             try:
@@ -148,25 +91,32 @@ class AIAgent:
                                 break
                         time.sleep(1.0)
                         continue
-                    return None, None
-                elif resp.status_code != 200:
-                    logger.error(f"API 请求返回状态码 [{resp.status_code}]: {resp.text[:150]}")
-                    return None, None
+
+                if resp.status_code != 200:
+                    try:
+                        err_json = resp.json()
+                        err_detail = err_json.get("error", {}).get("message") or err_json.get("message") or resp.text[:200]
+                    except Exception:
+                        err_detail = resp.text[:200]
+                    last_error = f"[HTTP {resp.status_code}] {err_detail}"
+                    logger.error(f"API 请求失败: {last_error}")
+                    return None, None, last_error
 
                 res_json = resp.json()
                 choices = res_json.get("choices", [])
                 if not choices:
-                    return None, None
+                    return None, None, "模型响应中未包含有效 choices 内容"
 
                 message = choices[0].get("message", {})
                 usage = res_json.get("usage", {})
-                return message, usage
+                return message, usage, None
 
             except requests.exceptions.RequestException as e:
+                last_error = f"网络请求异常: {str(e)}"
                 logger.error(f"请求异常 (尝试 {attempt+1}/{retries}): {e}")
                 time.sleep(2.0 * (attempt + 1))
 
-        return None, None
+        return None, None, last_error or "模型服务连接超时或无响应"
 
 
     def chat(self, user_prompt: str, image_url: Optional[str] = None, status_callback=None) -> Dict[str, Any]:
@@ -238,7 +188,7 @@ class AIAgent:
                 }
 
                 logger.info(f"[TRACE #{trace.trace_id}] 第 {round_idx+1} 轮推理发起，消息数: {len(messages)}")
-                message, usage = self._call_model(url, headers, payload)
+                message, usage, err_msg = self._call_model(url, headers, payload)
                 round_duration = time.time() - round_start_t
 
                 if round_idx == 0:
@@ -250,8 +200,12 @@ class AIAgent:
                     trace.record_tokens(usage)
 
                 if message is None:
-                    logger.error(f"[TRACE #{trace.trace_id}] 第 {round_idx+1} 轮推理 API 异常")
-                    break
+                    logger.error(f"[TRACE #{trace.trace_id}] 第 {round_idx+1} 轮推理 API 异常: {err_msg}")
+                    trace.finish()
+                    reply_content = f"⚠️ **AI 模型服务响应异常**\n> `{err_msg or '网络通信超时或上游未返回数据'}`"
+                    self.history.append({"role": "assistant", "content": reply_content})
+                    trace.log_trace_summary()
+                    return {"text": reply_content, "trace_tag": trace.get_summary_tag(), "trace_id": trace.trace_id}
 
                 raw_content = message.get("content")
                 tool_calls = message.get("tool_calls")
@@ -318,7 +272,7 @@ class AIAgent:
                 "model": self.model,
                 "messages": messages,
             }
-            final_message, final_usage = self._call_model(url, headers, final_payload)
+            final_message, final_usage, final_err = self._call_model(url, headers, final_payload)
             final_duration = time.time() - final_start_t
             trace.mark_second_thought(final_duration)
             if final_usage:
@@ -333,8 +287,13 @@ class AIAgent:
                     trace.log_trace_summary()
                     return {"text": reply_content, "trace_tag": trace.get_summary_tag(), "trace_id": trace.trace_id}
 
-            # 极端异常兜底（模型服务无响应等），友好提示，绝不直接 dump raw json
-            fallback_msg = f"已完成操作 `{last_tool_name}`，但由于网络响应延迟未能完成最终提炼，请稍后查看相关状态或重试。" if last_tool_name else "❌ 连接 AI 服务异常，请稍后重试。"
+            # 极端异常兜底：若有具体报错则直接透传上游信息
+            if final_err:
+                fallback_msg = f"已完成底层操作，但在提炼结论时 AI 服务响应异常：\n> `{final_err}`"
+            elif last_tool_name:
+                fallback_msg = f"已完成操作 `{last_tool_name}`，但由于网络响应延迟未能完成最终提炼，请稍后查看相关状态或重试。"
+            else:
+                fallback_msg = "❌ 连接 AI 服务异常，未收到有效回复。"
             self.history.append({"role": "assistant", "content": fallback_msg})
             trace.log_trace_summary()
             return {"text": fallback_msg, "trace_tag": trace.get_summary_tag(), "trace_id": trace.trace_id}

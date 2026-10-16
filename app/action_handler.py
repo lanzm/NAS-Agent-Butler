@@ -27,7 +27,10 @@ class ActionHandler:
         trace_tag = ai_result.get("trace_tag", "")
         
         lang = os.getenv("DEFAULT_LANGUAGE", "zh").strip().lower()
-        title = "🤖 NAS Smart Butler" if lang == "en" else "🤖 NAS 家庭智能管家"
+        if image_url:
+            title = "🖼️ Image Analysis" if lang == "en" else "🖼️ 图片视觉诊断"
+        else:
+            title = "🤖 NAS Smart Butler" if lang == "en" else "🤖 NAS 家庭智能管家"
         card = build_ai_response_card(content=content_text, title=title, trace_tag=trace_tag)
         return "CARD", card
 

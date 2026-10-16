@@ -12,7 +12,7 @@ services:
     env_file:
       - .env
     volumes:
-      # 挂载宿主机 Docker 套接字（用于容器状态排查与安全自愈）
+      # 挂载宿主机 Docker 套接字（用于容器状态巡检；默认只读挂载更安全，若需允许 Agent 重启异常卡死容器，可移除末尾的 :ro）
       - /var/run/docker.sock:/var/run/docker.sock:ro
       # 挂载宿主机系统信息目录（只读，用于提取准确的 CPU/负载与磁盘挂载数据）
       - /proc:/host/proc:ro

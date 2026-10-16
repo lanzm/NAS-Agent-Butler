@@ -11,6 +11,7 @@ main.py - NAS 智能运维管家主入口守护进程
 
 import os
 import json
+import yaml
 import time
 import logging
 import threading
@@ -74,28 +75,31 @@ prev_alarm_state = False
 
 
 def load_scheduled_tasks() -> list:
-    """加载定时任务配置（支持 config/schedules.json 自定义与默认兜底）"""
+    """加载定时任务配置（从 config/schedules.yaml 读取，纯 YAML 规范）"""
     possible_paths = [
-        "/app/config/schedules.json",
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config", "schedules.json"),
-        os.path.join(os.getcwd(), "config", "schedules.json"),
+        "/app/config/schedules.yaml",
+        "/app/config/schedules.yml",
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config", "schedules.yaml"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config", "schedules.yml"),
+        os.path.join(os.getcwd(), "config", "schedules.yaml"),
+        os.path.join(os.getcwd(), "config", "schedules.yml"),
     ]
     for p in possible_paths:
         if os.path.exists(p):
             try:
                 with open(p, "r", encoding="utf-8") as f:
-                    tasks = json.load(f)
+                    tasks = yaml.safe_load(f)
                     if isinstance(tasks, list):
-                        logger.info(f"成功从配置文件加载 {len(tasks)} 个定时 Agent 任务: {p}")
+                        logger.info(f"成功从 YAML 配置文件加载 {len(tasks)} 个定时任务: {p}")
                         return tasks
             except Exception as e:
-                logger.error(f"解析定时任务配置文件失败 ({p}): {e}")
+                logger.error(f"解析定时任务 YAML 配置文件失败 ({p}): {e}")
 
     # 默认兜底任务
     default_prompt = (
         "请先调用 get_weather_calendar 获取今日天气状况、温差、出行建议、农历节气及放假倒计时（距离周末/法定节假日），"
-        "再综合分析宿主机健康状态、各容器运行状态，并读取 nas-backup 容器昨夜运行日志。"
-        "输出一份精炼专业的晨报，分为【今日生活简报】【系统核心结论】【运行水位】【备份报告】【风险与建议】五段。在【今日生活简报】中注明放假倒计时，在【备份报告】中总结昨夜相册与数据库备份结果，语言专业生动，限 260 字以内。"
+        "再综合分析宿主机健康状态、各容器运行状态，并检查常见备份容器（如 nas-backup、restic、duplicati 等，未部署则直接跳过）。"
+        "输出一份精炼专业的晨报，分为【今日生活简报】【系统核心结论】【运行水位】【备份报告】【风险与建议】五段。在【今日生活简报】中注明放假倒计时，在【备份报告】中总结昨夜备份状态（未部署可注明无），语言专业生动，限 260 字以内。"
     )
     return [
         {
@@ -103,6 +107,18 @@ def load_scheduled_tasks() -> list:
             "time": DAILY_REPORT_TIME or "08:00",
             "enabled": True,
             "prompt": default_prompt
+        },
+        {
+            "name": "🔍 系统健康例行巡检与智能诊断",
+            "interval_minutes": 5,
+            "enabled": True,
+            "notify_on_recovery": True,
+            "thresholds": {
+                "cpu": 85,
+                "memory": 90,
+                "disk": 95,
+                "cpu_temp": 80
+            }
         }
     ]
 
@@ -129,35 +145,59 @@ def execute_scheduled_agent_task(task_name: str, prompt: str):
         logger.error(f"❌ 定时任务 [{task_name}] 执行异常: {e}")
 
 
-def periodic_health_check():
-    """周期性系统巡检任务（仅负责阈值超标时的被动异常告警）"""
+def run_health_check_task(task_config: dict):
+    """周期性系统指标巡检与智能诊断任务（支持 thresholds 覆盖、静默判定、AI 深度排查与恢复闭环）"""
     global last_alarm_time, prev_alarm_state
+    task_name = task_config.get("name", "系统健康例行巡检")
+    thresholds = task_config.get("thresholds")
+    notify_on_recovery = task_config.get("notify_on_recovery", True)
+    prompt_template = task_config.get("prompt")
+
     try:
-        data = collector.collect()
+        data = collector.collect(thresholds=thresholds)
         is_alarm = data.get("is_alarm", False)
+        alarms = data.get("alarms", [])
         now = time.time()
 
         if is_alarm:
             if not prev_alarm_state or (now - last_alarm_time > ALARM_COOLDOWN):
-                logger.warning(f"检测到系统异常告警: {data.get('alarms')}")
-                card = build_status_card(data)
+                logger.warning(f"检测到系统异常告警 [{task_name}]: {alarms}")
+                if prompt_template:
+                    alarm_context = "\n".join(f"- {a}" for a in alarms)
+                    full_prompt = (
+                        f"{prompt_template.strip()}\n\n"
+                        f"【系统当前检测到的活跃异常告警】：\n{alarm_context}"
+                    )
+                    ai_res = action_handler.agent.chat(full_prompt)
+                    content_text = ai_res.get("text", "异常诊断分析完成。")
+                    trace_tag = ai_res.get("trace_tag", "")
+                    card = build_ai_response_card(
+                        content=content_text,
+                        title=f"🚨 {task_name}",
+                        trace_tag=trace_tag
+                    )
+                    card["header"]["template"] = "red"
+                else:
+                    card = build_status_card(data)
+
                 channel_manager.broadcast_card(card)
                 last_alarm_time = now
                 prev_alarm_state = True
         else:
             if prev_alarm_state:
-                logger.info("系统各项指标已从异常中恢复正常")
-                card = build_status_card(data)
-                card["header"]["template"] = "green"
-                card["header"]["title"]["content"] = "✅ NAS 运行指标恢复正常"
-                channel_manager.broadcast_card(card)
+                logger.info(f"系统各项指标已从异常中恢复正常 [{task_name}]")
+                if notify_on_recovery:
+                    card = build_status_card(data)
+                    card["header"]["template"] = "green"
+                    card["header"]["title"]["content"] = "✅ NAS 运行指标恢复正常"
+                    channel_manager.broadcast_card(card)
                 prev_alarm_state = False
     except Exception as e:
-        logger.error(f"巡检异常: {e}")
+        logger.error(f"[{task_name}] 巡检异常: {e}")
 
 
 def run_scheduler_loop():
-    """后台定时任务调度引擎"""
+    """后台定时任务调度引擎（通用触发器与分发器）"""
     if not schedule:
         logger.warning("未安装 schedule 模块，定时任务引擎跳过启动")
         return
@@ -165,18 +205,36 @@ def run_scheduler_loop():
     tasks = load_scheduled_tasks()
     active_count = 0
     for t in tasks:
-        if t.get("enabled", True):
-            task_time = t.get("time", "08:30")
-            task_name = t.get("name", "定时运维汇报")
-            prompt = t.get("prompt", "")
-            schedule.every().day.at(task_time).do(
-                lambda name=task_name, p=prompt: execute_scheduled_agent_task(name, p)
-            )
-            logger.info(f"  └─ 已注册定时 Agent 任务: [{task_name}] (每日 {task_time})")
-            active_count += 1
+        if not t.get("enabled", True):
+            continue
 
-    schedule.every(5).minutes.do(periodic_health_check)
-    logger.info(f"定时调度引擎已就绪: 已激活 {active_count} 个 Agent 任务，5分钟异常巡检生效中")
+        task_name = t.get("name", "未命名任务")
+        has_thresholds = "thresholds" in t
+        time_str = t.get("time")
+        interval_min = t.get("interval_minutes")
+
+        # 确定执行动作 (Action)
+        if has_thresholds:
+            action_fn = (lambda task=t: run_health_check_task(task))
+        else:
+            prompt = t.get("prompt", "")
+            action_fn = (lambda name=task_name, p=prompt: execute_scheduled_agent_task(name, p))
+
+        # 注册触发器 (Trigger)
+        if time_str:
+            schedule.every().day.at(str(time_str)).do(action_fn)
+            logger.info(f"  └─ 已注册每日定点任务: [{task_name}] (每日 {time_str})")
+            active_count += 1
+        elif interval_min is not None:
+            try:
+                mins = int(interval_min)
+                schedule.every(mins).minutes.do(action_fn)
+                logger.info(f"  └─ 已注册周期巡检任务: [{task_name}] (每 {mins} 分钟)")
+                active_count += 1
+            except ValueError:
+                logger.error(f"任务 [{task_name}] 的 interval_minutes 配置无效: {interval_min}")
+
+    logger.info(f"定时调度引擎已就绪: 共激活 {active_count} 个调度任务")
     while True:
         schedule.run_pending()
         time.sleep(10)

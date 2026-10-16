@@ -6,3 +6,4 @@ docker>=6.1.0
 schedule>=1.2.0
 lunardate>=0.3.0
 chinesecalendar>=1.11.0
+pyyaml>=6.0.0

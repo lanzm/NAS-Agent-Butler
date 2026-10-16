@@ -284,19 +284,33 @@ graph TD
 
 ---
 
-## ⏰ 自定义定时 Agent 任务 (`config/schedules.json`)
+## ⏰ 自定义定时与周期 Agent 任务 (`config/schedules.yaml`)
 
-系统内置了声明式的 Prompt 驱动任务引擎，无需修改任何代码，只需在 `config/schedules.json` 中配置你的指令和触发时间，容器挂载后自动生效：
+系统内置了声明式的任务调度引擎，支持 **每日定点任务**（`time: "HH:MM"`）与 **高频周期巡检**（`interval_minutes: 分钟`）。全面采用现代化 YAML 规范，完美支持中文注释与原生多行 Prompt，无需编写代码，修改挂载目录下的 `config/schedules.yaml` 即可生效：
 
-```json
-[
-  {
-    "name": "🌅 今日 SRE 运维与生活晨报",
-    "time": "08:00",
-    "enabled": true,
-    "prompt": "请综合分析宿主机健康状态、Docker 容器拓扑及今日天气日程，输出一份精炼、结论先行、富有亲和力的今日管家晨报。排版工整，字数控制在 200 字内。"
-  }
-]
+```yaml
+# 1. 每日定点任务：生活与运维晨报
+- name: "🌅 今日 SRE 运维与生活晨报"
+  time: "08:00"                # 每日固定触发时间
+  enabled: true
+  prompt: |
+    请先调用 get_weather_calendar 获取今日天气状况、温差、出行建议、农历节气及放假倒计时，
+    再综合分析宿主机健康状态、各容器运行状态，并检查常见备份容器（未部署则直接跳过）。
+    输出一份精炼专业的晨报，分为【今日生活简报】【系统核心结论】【运行水位】【备份报告】【风险与建议】五段。
+
+# 2. 周期性任务：系统健康静默巡检与 AI 智能诊断
+- name: "🔍 系统健康例行巡检与智能诊断"
+  interval_minutes: 5          # 巡检间隔（分钟）
+  enabled: true
+  notify_on_recovery: true     # 故障恢复时自动发送绿色闭环通知（0 Token 消耗）
+  thresholds:                  # 告警触发阈值（本地快速比对，未超标时 0 Token 消耗，静默不打扰）
+    cpu: 85                    # CPU 使用率百分比
+    memory: 90                 # 内存使用率百分比
+    disk: 95                   # 磁盘挂载点使用率百分比
+    cpu_temp: 80               # CPU 温度（摄氏度）
+  prompt: |
+    系统检测到指标超标或容器异常。
+    请结合当前异常告警项，调用相关工具排查具体原因，给出应急处置建议。
 ```
 
 ---

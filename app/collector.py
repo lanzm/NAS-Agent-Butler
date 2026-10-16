@@ -8,6 +8,7 @@ import time
 import socket
 import datetime
 import psutil
+from typing import Optional
 
 try:
     import docker
@@ -148,8 +149,9 @@ class SystemCollector:
         except Exception:
             return {"rx_rate": "0B/s", "tx_rate": "0B/s", "total_rx": "0B", "total_tx": "0B"}
 
-    def get_disk_info(self):
+    def get_disk_info(self, disk_threshold: Optional[int] = None):
         """获取关键挂载路径的磁盘容量与使用率"""
+        target_th = disk_threshold if disk_threshold is not None else self.disk_threshold
         disks = []
         alarms = []
         targets = [
@@ -180,8 +182,8 @@ class SystemCollector:
                     "percent": pct
                 })
 
-                if pct >= self.disk_threshold:
-                    alarms.append(f"磁盘 {label} 使用率达 {pct}% (阈值 {self.disk_threshold}%)")
+                if pct >= target_th:
+                    alarms.append(f"磁盘 {label} 使用率达 {pct}% (阈值 {target_th}%)")
             except Exception:
                 pass
 
@@ -197,8 +199,8 @@ class SystemCollector:
                     "free": human_bytes(du.free),
                     "percent": pct
                 })
-                if pct >= self.disk_threshold:
-                    alarms.append(f"磁盘 系统盘 / 使用率达 {pct}% (阈值 {self.disk_threshold}%)")
+                if pct >= target_th:
+                    alarms.append(f"磁盘 系统盘 / 使用率达 {pct}% (阈值 {target_th}%)")
             except Exception:
                 pass
 
@@ -239,24 +241,30 @@ class SystemCollector:
             containers.append({"name": "Docker无法连接", "status": str(e), "is_running": False, "health": "error"})
         return containers, alarms
 
-    def collect(self) -> dict:
-        """综合采集系统所有指标并触发阈值检查"""
+    def collect(self, thresholds: Optional[dict] = None) -> dict:
+        """综合采集系统所有指标并触发阈值检查 (支持动态传入 thresholds 覆盖默认值)"""
+        th = thresholds or {}
+        cpu_th = th.get("cpu", self.cpu_threshold)
+        mem_th = th.get("memory", self.mem_threshold)
+        disk_th = th.get("disk", self.disk_threshold)
+        temp_th = th.get("cpu_temp", self.temp_threshold)
+
         alarms = []
 
         # 1. CPU
         try:
             cpu_usage = int(psutil.cpu_percent(interval=0.5))
-            if cpu_usage > self.cpu_threshold:
+            if cpu_usage > cpu_th:
                 time.sleep(1)
                 cpu_usage = int(psutil.cpu_percent(interval=0.5))
-                if cpu_usage > self.cpu_threshold:
-                    alarms.append(f"CPU 使用率持续偏高: {cpu_usage}% (阈值 {self.cpu_threshold}%)")
+                if cpu_usage > cpu_th:
+                    alarms.append(f"CPU 使用率持续偏高: {cpu_usage}% (阈值 {cpu_th}%)")
         except Exception:
             cpu_usage = 0
 
         cpu_temp = self.get_cpu_temp()
-        if cpu_temp and cpu_temp > self.temp_threshold:
-            alarms.append(f"CPU 温度过高: {cpu_temp}°C (阈值 {self.temp_threshold}°C)")
+        if cpu_temp and cpu_temp > temp_th:
+            alarms.append(f"CPU 温度过高: {cpu_temp}°C (阈值 {temp_th}°C)")
 
         loadavg = self.get_loadavg()
 
@@ -264,8 +272,8 @@ class SystemCollector:
         try:
             mem = psutil.virtual_memory()
             mem_usage = int(mem.percent)
-            if mem_usage > self.mem_threshold:
-                alarms.append(f"内存使用率偏高: {mem_usage}% (阈值 {self.mem_threshold}%)")
+            if mem_usage > mem_th:
+                alarms.append(f"内存使用率偏高: {mem_usage}% (阈值 {mem_th}%)")
             mem_used_str = human_bytes(mem.used)
             mem_total_str = human_bytes(mem.total)
         except Exception:
@@ -280,7 +288,7 @@ class SystemCollector:
             swap_pct = 0
 
         # 3. 磁盘
-        disks, disk_alarms = self.get_disk_info()
+        disks, disk_alarms = self.get_disk_info(disk_threshold=disk_th)
         alarms.extend(disk_alarms)
 
         # 4. 网络
