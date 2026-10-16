@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  nas-agent-butler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nas-agent-butler
+    restart: unless-stopped
+    # 默认使用 bridge 隔离网络；若需使用 WOL 局域网开机魔包唤醒 PC，建议切换为 host 模式
+    # network_mode: "host"
+    env_file:
+      - .env
+    volumes:
+      # 挂载宿主机 Docker 套接字（用于容器状态排查与安全自愈）
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # 挂载宿主机系统信息目录（只读，用于提取准确的 CPU/负载与磁盘挂载数据）
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc/localtime:/etc/localtime:ro
+      # 挂载自定义定时任务配置（支持热更新）
+      - ./config:/app/config:ro
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

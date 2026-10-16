@@ -1,0 +1,8 @@
+lark-oapi>=1.2.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+psutil>=5.9.0
+docker>=6.1.0
+schedule>=1.2.0
+lunardate>=0.3.0
+chinesecalendar>=1.11.0
