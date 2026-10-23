@@ -9,11 +9,8 @@ import urllib.parse
 import ipaddress
 import requests
 from typing import Dict, Any
-
-try:
-    from app.config import settings
-except ImportError:
-    from config import settings
+from app.config import settings
+from app.plugins.base import BasePlugin
 
 def get_rpc_url() -> str:
     return os.getenv("ARIA2_RPC_URL", settings.aria2_rpc_url).strip()
@@ -152,12 +149,6 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
             return {"status": "error", "message": "必须提供任务 GID"}
         return {"status": "success", "result": rpc_call("aria2.unpause", [gid])}
     return {"status": "error", "message": f"未知动作: {action}"}
-
-
-try:
-    from app.plugins.base import BasePlugin
-except ImportError:
-    from plugins.base import BasePlugin
 
 
 class Aria2Plugin(BasePlugin):

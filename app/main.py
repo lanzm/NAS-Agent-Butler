@@ -42,10 +42,7 @@ logger = logging.getLogger("butler")
 
 load_dotenv()
 
-try:
-    from app.config import settings
-except ImportError:
-    from config import settings
+from app.config import settings
 
 # --- 类型安全的系统配置 ---
 DISK_THRESHOLD = settings.disk_threshold

@@ -17,20 +17,12 @@ import threading
 import requests
 from typing import Dict, Any, Optional
 
-try:
-    from app.sanitizer import sanitize_text
-    from app.mcp_client import MCPClient
-    from app.trace_tracker import TraceTracker
-    from app.card_builder import clean_ai_content
-    from app.calendar_helper import format_datetime_chinese
-    from app.config import settings
-except ImportError:
-    from sanitizer import sanitize_text
-    from mcp_client import MCPClient
-    from trace_tracker import TraceTracker
-    from card_builder import clean_ai_content
-    from calendar_helper import format_datetime_chinese
-    from config import settings
+from app.sanitizer import sanitize_text
+from app.mcp_client import MCPClient
+from app.trace_tracker import TraceTracker
+from app.card_builder import clean_ai_content
+from app.calendar_helper import format_datetime_chinese
+from app.config import settings
 
 logger = logging.getLogger("butler.agent")
 

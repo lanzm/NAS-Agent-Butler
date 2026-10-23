@@ -8,11 +8,8 @@ import os
 import socket
 import subprocess
 from typing import Dict, Any
-
-try:
-    from app.config import settings
-except ImportError:
-    from config import settings
+from app.config import settings
+from app.plugins.base import BasePlugin
 
 def is_enabled() -> bool:
     enabled = os.getenv("ENABLE_PC_POWER", "").strip().lower() == "true" if "ENABLE_PC_POWER" in os.environ else settings.enable_pc_power
@@ -88,12 +85,6 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
             return {"status": "error", "message": f"远程电源调度异常: {str(e)}"}
 
     return {"status": "error", "message": f"未知电源动作: {action}"}
-
-
-try:
-    from app.plugins.base import BasePlugin
-except ImportError:
-    from plugins.base import BasePlugin
 
 
 class PCPowerPlugin(BasePlugin):

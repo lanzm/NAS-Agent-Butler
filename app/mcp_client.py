@@ -59,6 +59,10 @@ class MCPClient:
                 return
 
             logger.info(f"正在启动 MCP Server 进程: {' '.join(self.server_cmd)}")
+            env = os.environ.copy()
+            project_root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+            curr_pythonpath = env.get("PYTHONPATH", "")
+            env["PYTHONPATH"] = f"{project_root}{os.pathsep}{curr_pythonpath}" if curr_pythonpath else project_root
             self.process = subprocess.Popen(
                 self.server_cmd,
                 stdin=subprocess.PIPE,
@@ -66,7 +70,8 @@ class MCPClient:
                 stderr=sys.stderr,  # Server 日志直接输出至主程序 stderr
                 text=True,
                 encoding="utf-8",
-                bufsize=1
+                bufsize=1,
+                env=env
             )
             # 立即发送 initialize 握手报文
             init_payload = {

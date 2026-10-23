@@ -10,14 +10,7 @@ import datetime
 import psutil
 from typing import Optional
 
-try:
-    from app.docker_client import get_docker_client
-except ImportError:
-    try:
-        from docker_client import get_docker_client
-    except ImportError:
-        def get_docker_client():
-            return None
+from app.docker_client import get_docker_client
 
 
 def calc_container_uptime(started_at_str: str) -> str:

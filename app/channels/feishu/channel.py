@@ -39,10 +39,7 @@ from app.card_builder import (
 )
 from app.audio_transcriber import transcribe_audio_with_gemini
 
-try:
-    from app.config import settings
-except ImportError:
-    from config import settings
+from app.config import settings
 
 logger = logging.getLogger("butler.feishu")
 

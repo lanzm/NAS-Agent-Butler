@@ -7,20 +7,10 @@ plugins/firewall_plugin.py - Fail2ban 安全防火墙插件
 import os
 import re
 import ipaddress
-try:
-    from app.docker_client import get_docker_client
-except ImportError:
-    try:
-        from docker_client import get_docker_client
-    except ImportError:
-        def get_docker_client():
-            return None
 from typing import Dict, Any
-
-try:
-    from app.config import settings
-except ImportError:
-    from config import settings
+from app.docker_client import get_docker_client
+from app.config import settings
+from app.plugins.base import BasePlugin
 
 def get_container_name() -> str:
     return os.getenv("FAIL2BAN_CONTAINER_NAME", settings.fail2ban_container_name).strip()
@@ -114,12 +104,6 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         return {"status": "error", "message": f"未知动作: {action}"}
     except Exception as e:
         return {"status": "error", "message": f"防火墙指令执行失败: {str(e)}"}
-
-
-try:
-    from app.plugins.base import BasePlugin
-except ImportError:
-    from plugins.base import BasePlugin
 
 
 class FirewallPlugin(BasePlugin):

@@ -9,6 +9,15 @@ nas_mcp_server.py - NAS 专属轻量 MCP (Model Context Protocol) 服务的实�
 
 import sys
 import os
+
+# 确保工程根目录加入 sys.path，支持统一绝对导入
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+if CURRENT_DIR not in sys.path:
+    sys.path.insert(1, CURRENT_DIR)
+
 import io
 import json
 import time
@@ -19,10 +28,10 @@ import subprocess
 import re
 from typing import Dict, Any, List
 
-try:
-    from app.calendar_helper import format_datetime_chinese
-except ImportError:
-    from calendar_helper import format_datetime_chinese
+from app.calendar_helper import format_datetime_chinese
+from app.docker_client import get_docker_client
+from app.weather_calendar_helper import get_weather_calendar_summary
+from app.plugins import firewall_plugin, aria2_plugin, pc_power_plugin
 
 # 确保 UTF-8 编码读写，防止跨平台 Windows/Linux 管道乱码
 sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
@@ -315,11 +324,6 @@ def execute_manage_docker_container(args: Dict[str, Any]) -> Dict[str, Any]:
     tail_lines = min(int(args.get("tail_lines", 50)), 200)
 
     try:
-        try:
-            from app.docker_client import get_docker_client
-        except ImportError:
-            from docker_client import get_docker_client
-
         client = get_docker_client()
         if not client:
             return {"status": "error", "message": "Docker 守护进程未就绪或未运行"}
@@ -370,24 +374,10 @@ def execute_manage_docker_container(args: Dict[str, Any]) -> Dict[str, Any]:
 
 def execute_manage_aria2_download(args: Dict[str, Any]) -> Dict[str, Any]:
     """Aria2 离线下载插件调度"""
-    try:
-        from app.plugins import aria2_plugin
-    except ImportError:
-        try:
-            from plugins import aria2_plugin
-        except Exception as e:
-            return {"status": "error", "message": f"无法载入 aria2_plugin 模块: {e}"}
     return aria2_plugin.execute(args)
 
 def execute_manage_firewall_security(args: Dict[str, Any]) -> Dict[str, Any]:
     """Fail2ban 安全防火墙查询与解封"""
-    try:
-        from app.plugins import firewall_plugin
-    except ImportError:
-        try:
-            from plugins import firewall_plugin
-        except Exception as e:
-            return {"status": "error", "message": f"无法载入 firewall_plugin 模块: {e}"}
     return firewall_plugin.execute(args)
 
 def extract_clean_article_text(url: str, timeout: float = 2.5) -> str:
@@ -474,13 +464,6 @@ def execute_search_web_info(args: Dict[str, Any]) -> Dict[str, Any]:
 
 def execute_manage_pc_power(args: Dict[str, Any]) -> Dict[str, Any]:
     """PC 电源网络控制 (纯 Python WOL 唤醒与远程关机)"""
-    try:
-        from app.plugins import pc_power_plugin
-    except ImportError:
-        try:
-            from plugins import pc_power_plugin
-        except Exception as e:
-            return {"status": "error", "message": f"无法载入 pc_power_plugin 模块: {e}"}
     return pc_power_plugin.execute(args)
 
 def execute_generate_daily_report() -> Dict[str, Any]:
@@ -567,10 +550,6 @@ def _exec_get_container_logs(tool_args: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _exec_get_weather_calendar(tool_args: Dict[str, Any]) -> Dict[str, Any]:
-    try:
-        from app.weather_calendar_helper import get_weather_calendar_summary
-    except ImportError:
-        from weather_calendar_helper import get_weather_calendar_summary
     city_arg = tool_args.get("city")
     return get_weather_calendar_summary(city_arg)
 

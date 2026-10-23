@@ -18,10 +18,7 @@ from typing import Dict, Any
 
 logger = logging.getLogger("butler.weather")
 
-try:
-    from app.calendar_helper import GAN, ZHI, SHENGXIAO, MONTH_CN, DAY_CN, SOLAR_TERMS_C, get_lunar_date
-except ImportError:
-    from calendar_helper import GAN, ZHI, SHENGXIAO, MONTH_CN, DAY_CN, SOLAR_TERMS_C, get_lunar_date
+from app.calendar_helper import GAN, ZHI, SHENGXIAO, MONTH_CN, DAY_CN, SOLAR_TERMS_C, get_lunar_date
 
 WEATHER_ZH_MAP = {
     "sunny": "晴朗",
