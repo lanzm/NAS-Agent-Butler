@@ -251,6 +251,16 @@ def run_scheduler_loop():
 class InternalNotifyHandler(BaseHTTPRequestHandler):
     """本地内部通知 Webhook 处理程序（只监听 127.0.0.1）"""
 
+    def do_GET(self):
+        if self.path == "/health":
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(b'{"status":"healthy"}')
+        else:
+            self.send_response(404)
+            self.end_headers()
+
     def do_POST(self):
         if self.path == "/notify":
             try:

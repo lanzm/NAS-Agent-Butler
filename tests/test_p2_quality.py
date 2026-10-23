@@ -136,5 +136,25 @@ class TestChannelManager(unittest.TestCase):
         self.assertFalse(ch2.stopped)
 
 
+class TestInternalNotifyHandler(unittest.TestCase):
+    """测试内部 Webhook 与健康检查端点"""
+
+    def test_health_check_get(self):
+        import io
+        from unittest.mock import MagicMock
+        from app.main import InternalNotifyHandler
+
+        handler = InternalNotifyHandler.__new__(InternalNotifyHandler)
+        handler.path = "/health"
+        handler.wfile = io.BytesIO()
+        handler.send_response = MagicMock()
+        handler.send_header = MagicMock()
+        handler.end_headers = MagicMock()
+
+        handler.do_GET()
+        handler.send_response.assert_called_with(200)
+        self.assertIn(b"healthy", handler.wfile.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()
