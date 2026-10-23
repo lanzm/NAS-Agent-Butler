@@ -51,6 +51,25 @@ class TestCalendarHelper(unittest.TestCase):
         self.assertEqual(lunar_2025["lunar_month"], 1)
         self.assertEqual(lunar_2025["lunar_day"], 1)
 
+    def test_format_datetime_chinese(self):
+        from app.calendar_helper import format_datetime_chinese
+        dt = datetime.datetime(2026, 10, 23, 15, 30)
+        formatted = format_datetime_chinese(dt)
+        self.assertEqual(formatted, "2026年10月23日 15:30 星期五")
+
+
+class TestAudioMimeDetection(unittest.TestCase):
+    """测试音频魔数自动识别纯函数"""
+
+    def test_detect_audio_mime(self):
+        from app.audio_transcriber import detect_audio_mime
+        self.assertEqual(detect_audio_mime(b"RIFF\x00\x00\x00\x00WAVEfmt "), "audio/wav")
+        self.assertEqual(detect_audio_mime(b"ID3\x03\x00\x00"), "audio/mp3")
+        self.assertEqual(detect_audio_mime(b"fLaC\x00\x00"), "audio/flac")
+        self.assertEqual(detect_audio_mime(b"\x00\x00\x00\x20ftypM4A "), "audio/mp4")
+        self.assertEqual(detect_audio_mime(b"OggS\x00\x02"), "audio/ogg")
+        self.assertEqual(detect_audio_mime(b""), "audio/ogg")
+
 
 class TestWebSearchHelper(unittest.TestCase):
     """测试必应搜索与摘要正文提取增强"""

@@ -13,6 +13,25 @@ from typing import Tuple, Optional
 logger = logging.getLogger("butler.transcriber")
 
 
+def detect_audio_mime(audio_bytes: bytes) -> str:
+    """根据文件头特征魔数嗅探真实音频 MIME 类型 (WAV/MP3/FLAC/MP4/AAC/OGG)"""
+    if not audio_bytes:
+        return "audio/ogg"
+    if audio_bytes.startswith(b"RIFF") and len(audio_bytes) >= 12 and audio_bytes[8:12] == b"WAVE":
+        return "audio/wav"
+    if audio_bytes.startswith(b"ID3") or audio_bytes.startswith(b"\xff\xfb") or audio_bytes.startswith(b"\xff\xf3"):
+        return "audio/mp3"
+    if audio_bytes.startswith(b"fLaC"):
+        return "audio/flac"
+    if len(audio_bytes) >= 8 and audio_bytes[4:8] in [b"ftyp", b"M4A "]:
+        return "audio/mp4"
+    if audio_bytes.startswith(b"\xff\xf1") or audio_bytes.startswith(b"\xff\xf9"):
+        return "audio/aac"
+    if audio_bytes.startswith(b"OggS"):
+        return "audio/ogg"
+    return "audio/ogg"
+
+
 def transcribe_audio_with_gemini(audio_bytes: bytes) -> Tuple[Optional[str], Optional[str]]:
     """
     使用 Gemini 原生多模态音频接口将语音二进制流直接自动转写为文字文本。
@@ -22,21 +41,7 @@ def transcribe_audio_with_gemini(audio_bytes: bytes) -> Tuple[Optional[str], Opt
         return None, "音频数据为空"
 
     try:
-        # 识别魔数获取真实 MIME 类型
-        mime_type = "audio/ogg"
-        if audio_bytes.startswith(b"RIFF") and len(audio_bytes) >= 12 and audio_bytes[8:12] == b"WAVE":
-            mime_type = "audio/wav"
-        elif audio_bytes.startswith(b"ID3") or audio_bytes.startswith(b"\xff\xfb") or audio_bytes.startswith(b"\xff\xf3"):
-            mime_type = "audio/mp3"
-        elif audio_bytes.startswith(b"fLaC"):
-            mime_type = "audio/flac"
-        elif len(audio_bytes) >= 8 and audio_bytes[4:8] in [b"ftyp", b"M4A "]:
-            mime_type = "audio/mp4"
-        elif audio_bytes.startswith(b"\xff\xf1") or audio_bytes.startswith(b"\xff\xf9"):
-            mime_type = "audio/aac"
-        elif audio_bytes.startswith(b"OggS"):
-            mime_type = "audio/ogg"
-
+        mime_type = detect_audio_mime(audio_bytes)
         audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
 
         api_base = os.getenv("OPENAI_API_BASE", "https://generativelanguage.googleapis.com/v1beta/openai").rstrip("/")

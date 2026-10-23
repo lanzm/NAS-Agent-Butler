@@ -22,13 +22,15 @@ try:
     from app.mcp_client import MCPClient
     from app.trace_tracker import TraceTracker
     from app.card_builder import clean_ai_content
+    from app.calendar_helper import format_datetime_chinese
 except ImportError:
     from sanitizer import sanitize_text
     from mcp_client import MCPClient
     from trace_tracker import TraceTracker
     from card_builder import clean_ai_content
+    from calendar_helper import format_datetime_chinese
 
-logger = logging.getLogger("feishu-bot.agent")
+logger = logging.getLogger("butler.agent")
 
 # 工具执行中面向飞书状态胶囊的人性化提示映射
 STATUS_MAP = {
@@ -148,9 +150,7 @@ class AIAgent:
 
         with self._lock:
             # 1. 动态生成时间并从 MCP 动态拉取 sre_engineer Prompt
-            now_dt = datetime.datetime.now()
-            weekday_cn = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][now_dt.weekday()]
-            now_str = now_dt.strftime(f"%Y年%m月%d日 %H:%M {weekday_cn}")
+            now_str = format_datetime_chinese()
             
             system_content = self.mcp_client.get_prompt("sre_engineer", current_time=now_str)
             if not system_content:

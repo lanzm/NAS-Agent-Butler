@@ -18,7 +18,7 @@ import subprocess
 import threading
 from typing import Dict, Any, List, Optional
 
-logger = logging.getLogger("feishu-bot.mcp_client")
+logger = logging.getLogger("butler.mcp.client")
 
 
 class MCPClient:

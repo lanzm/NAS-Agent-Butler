@@ -5,7 +5,7 @@ calendar_helper.py - 纯 Python 轻量级农历、节气与节假日计算器 (�
 """
 
 import datetime
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 
 # 1900-2100 农历核心数据（16进制编码月相与闰月）
 LUNAR_INFO = [
@@ -202,3 +202,12 @@ def get_full_calendar_summary(dt: datetime.date = None) -> Dict[str, Any]:
         "holiday": holiday,
         "calendar_summary": " · ".join(summary_parts)
     }
+
+
+def format_datetime_chinese(dt: Optional[datetime.datetime] = None) -> str:
+    """统一输出中文日期时间与星期 (如: '2026年10月23日 15:30 星期五')"""
+    if dt is None:
+        dt = datetime.datetime.now()
+    weekday_cn = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][dt.weekday()]
+    return dt.strftime(f"%Y年%m月%d日 %H:%M {weekday_cn}")
+

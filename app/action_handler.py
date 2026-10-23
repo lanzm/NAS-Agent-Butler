@@ -3,8 +3,6 @@
 action_handler.py - 飞书用户指令与交互动作分发器 (MCP + Trace 适配版)
 """
 import os
-import subprocess
-import threading
 from typing import Optional
 from app.collector import SystemCollector
 from app.card_builder import (
@@ -17,7 +15,7 @@ from app.ai_agent import AIAgent
 class ActionHandler:
     def __init__(self, collector: SystemCollector):
         self.collector = collector
-        self.agent = AIAgent(collector)
+        self.agent = AIAgent()
 
     def handle_text_command(self, text: str, image_url: Optional[str] = None, status_callback=None):
         """所有用户输入一律交由全能 AI Agent 理解与 MCP 工具调度（支持图片多模态），回传卡片与 Trace 脚标"""

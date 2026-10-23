@@ -8,9 +8,13 @@ import os
 import re
 import ipaddress
 try:
-    import docker
+    from app.docker_client import get_docker_client
 except ImportError:
-    docker = None
+    try:
+        from docker_client import get_docker_client
+    except ImportError:
+        def get_docker_client():
+            return None
 from typing import Dict, Any
 
 def get_container_name() -> str:
@@ -71,11 +75,11 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         except ValueError:
             return {"status": "error", "message": f"目标 IP 格式非法: `{raw_ip}`"}
 
-    if not docker:
-        return {"status": "error", "message": "Docker 模块未就绪"}
+    client = get_docker_client()
+    if not client:
+        return {"status": "error", "message": "Docker 模块未就绪或未运行"}
 
     try:
-        client = docker.from_env()
         guard = client.containers.get(container_name)
 
         if action == "status":

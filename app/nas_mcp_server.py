@@ -19,6 +19,11 @@ import subprocess
 import re
 from typing import Dict, Any, List
 
+try:
+    from app.calendar_helper import format_datetime_chinese
+except ImportError:
+    from calendar_helper import format_datetime_chinese
+
 # 确保 UTF-8 编码读写，防止跨平台 Windows/Linux 管道乱码
 sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', write_through=True)
@@ -29,7 +34,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] [NAS_MCP_SERVER] [%(levelname)s] %(message)s"
 )
-logger = logging.getLogger("nas_mcp_server")
+logger = logging.getLogger("butler.mcp.server")
 
 # ==============================================================================
 # 1. 💡 Prompts 支柱：全能家庭智能管家 · 生活百科与私有云运维版
@@ -583,6 +588,16 @@ TOOL_DISPATCH_TABLE = {
 }
 
 
+def jsonrpc_success(req_id: Any, result: Dict[str, Any]) -> Dict[str, Any]:
+    """生成标准 JSON-RPC 2.0 成功响应字典"""
+    return {"jsonrpc": "2.0", "id": req_id, "result": result}
+
+
+def jsonrpc_error(req_id: Any, code: int, message: str) -> Dict[str, Any]:
+    """生成标准 JSON-RPC 2.0 错误响应字典"""
+    return {"jsonrpc": "2.0", "id": req_id, "error": {"code": code, "message": message}}
+
+
 def handle_request(req: Dict[str, Any]) -> Dict[str, Any]:
     method = req.get("method")
     req_id = req.get("id")
@@ -590,96 +605,77 @@ def handle_request(req: Dict[str, Any]) -> Dict[str, Any]:
 
     # 1. 握手与初始化
     if method == "initialize":
-        return {
-            "jsonrpc": "2.0",
-            "id": req_id,
-            "result": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {
-                    "prompts": {"listChanged": True},
-                    "resources": {"subscribe": False, "listChanged": True},
-                    "tools": {"listChanged": True}
-                },
-                "serverInfo": {
-                    "name": "nas-mcp-server",
-                    "version": "1.0.0"
-                }
+        return jsonrpc_success(req_id, {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {
+                "prompts": {"listChanged": True},
+                "resources": {"subscribe": False, "listChanged": True},
+                "tools": {"listChanged": True}
+            },
+            "serverInfo": {
+                "name": "nas-mcp-server",
+                "version": "1.0.0"
             }
-        }
-    
+        })
+
     # 2. Prompts 接口
     elif method == "prompts/list":
         prompts_list = [
             {"name": p["name"], "description": p["description"], "arguments": p["arguments"]}
             for p in PROMPTS_REGISTRY.values()
         ]
-        return {"jsonrpc": "2.0", "id": req_id, "result": {"prompts": prompts_list}}
+        return jsonrpc_success(req_id, {"prompts": prompts_list})
 
     elif method == "prompts/get":
         p_name = params.get("name", "sre_engineer")
         if p_name in PROMPTS_REGISTRY:
             p_entry = PROMPTS_REGISTRY[p_name]
             args = params.get("arguments") or {}
-            now_dt = datetime.datetime.now()
-            weekday_cn = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][now_dt.weekday()]
-            now_str = args.get("current_time") or now_dt.strftime(f"%Y年%m月%d日 %H:%M {weekday_cn}")
-            
+            now_str = args.get("current_time") or format_datetime_chinese()
             content = p_entry["template"].replace("{current_time}", now_str)
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {
-                    "description": p_entry["description"],
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": {
-                                "type": "text",
-                                "text": content
-                            }
+            return jsonrpc_success(req_id, {
+                "description": p_entry["description"],
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": {
+                            "type": "text",
+                            "text": content
                         }
-                    ]
-                }
-            }
-        return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32602, "message": f"Prompt 未定义: {p_name}"}}
+                    }
+                ]
+            })
+        return jsonrpc_error(req_id, -32602, f"Prompt 未定义: {p_name}")
 
     # 3. Resources 接口
     elif method == "resources/list":
-        return {"jsonrpc": "2.0", "id": req_id, "result": {"resources": RESOURCES_REGISTRY}}
+        return jsonrpc_success(req_id, {"resources": RESOURCES_REGISTRY})
 
     elif method == "resources/read":
         uri = params.get("uri")
         if uri == "nas://system/health":
             health = execute_get_system_health()
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {
-                    "contents": [{
-                        "uri": uri,
-                        "mimeType": "application/json",
-                        "text": json.dumps(health, ensure_ascii=False)
-                    }]
-                }
-            }
+            return jsonrpc_success(req_id, {
+                "contents": [{
+                    "uri": uri,
+                    "mimeType": "application/json",
+                    "text": json.dumps(health, ensure_ascii=False)
+                }]
+            })
         elif uri == "nas://reports/daily-latest":
             report = execute_generate_daily_report()
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {
-                    "contents": [{
-                        "uri": uri,
-                        "mimeType": "text/markdown",
-                        "text": report.get("report_markdown", "")
-                    }]
-                }
-            }
-        return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32602, "message": f"Resource 未定义: {uri}"}}
+            return jsonrpc_success(req_id, {
+                "contents": [{
+                    "uri": uri,
+                    "mimeType": "text/markdown",
+                    "text": report.get("report_markdown", "")
+                }]
+            })
+        return jsonrpc_error(req_id, -32602, f"Resource 未定义: {uri}")
 
     # 4. Tools 接口
     elif method == "tools/list":
-        return {"jsonrpc": "2.0", "id": req_id, "result": {"tools": TOOLS_REGISTRY}}
+        return jsonrpc_success(req_id, {"tools": TOOLS_REGISTRY})
 
     elif method == "tools/call":
         tool_name = params.get("name")
@@ -688,11 +684,7 @@ def handle_request(req: Dict[str, Any]) -> Dict[str, Any]:
 
         executor = TOOL_DISPATCH_TABLE.get(tool_name)
         if not executor:
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "error": {"code": -32601, "message": f"未知工具: {tool_name}"}
-            }
+            return jsonrpc_error(req_id, -32601, f"未知工具: {tool_name}")
 
         start_t = time.time()
         try:
@@ -703,20 +695,16 @@ def handle_request(req: Dict[str, Any]) -> Dict[str, Any]:
 
         elapsed = time.time() - start_t
         logger.info(f"工具 {tool_name} 执行完毕，耗时 {elapsed:.2f}s")
-        return {
-            "jsonrpc": "2.0",
-            "id": req_id,
-            "result": {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json.dumps(res_data, ensure_ascii=False)
-                    }
-                ]
-            }
-        }
+        return jsonrpc_success(req_id, {
+            "content": [
+                {
+                    "type": "text",
+                    "text": json.dumps(res_data, ensure_ascii=False)
+                }
+            ]
+        })
 
-    return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"未知方法: {method}"}}
+    return jsonrpc_error(req_id, -32601, f"未知方法: {method}")
 
 def main():
     logger.info("NAS MCP Server 启动，等待标准输入指令流...")

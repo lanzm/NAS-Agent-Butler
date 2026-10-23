@@ -16,7 +16,7 @@ import urllib.request
 import urllib.parse
 from typing import Dict, Any
 
-logger = logging.getLogger("feishu-bot.weather")
+logger = logging.getLogger("butler.weather")
 
 try:
     from app.calendar_helper import GAN, ZHI, SHENGXIAO, MONTH_CN, DAY_CN, SOLAR_TERMS_C, get_lunar_date
