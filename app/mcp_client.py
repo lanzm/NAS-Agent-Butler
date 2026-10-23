@@ -12,6 +12,7 @@ import sys
 import os
 import json
 import time
+import queue
 import logging
 import subprocess
 import threading
@@ -47,8 +48,9 @@ class MCPClient:
 
         self.server_cmd = server_cmd
         self.process: Optional[subprocess.Popen] = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._request_counter = 0
+        self._tools_cache: Optional[List[Dict[str, Any]]] = None
 
     def start(self):
         """启动或重启 MCP Server 子进程并完成握手"""
@@ -77,51 +79,96 @@ class MCPClient:
                     "capabilities": {}
                 }
             }
-            resp = self._send_raw(init_payload)
+            resp = self._send_raw(init_payload, timeout=10.0)
             if not resp or "error" in resp:
                 logger.error(f"MCP Server 握手失败: {resp}")
             else:
                 logger.info("MCP Server 握手初始化成功！")
 
     def stop(self):
-        """优雅关闭子进程"""
+        """优雅关闭子进程并清空缓存"""
         with self._lock:
-            if self.process and self.process.poll() is None:
+            self._tools_cache = None
+            if self.process:
                 try:
-                    self.process.terminate()
-                    self.process.wait(timeout=3)
+                    if self.process.stdin:
+                        self.process.stdin.close()
+                    if self.process.stdout:
+                        self.process.stdout.close()
                 except Exception:
-                    self.process.kill()
+                    pass
+
+                if self.process.poll() is None:
+                    try:
+                        self.process.terminate()
+                        self.process.wait(timeout=3)
+                    except Exception:
+                        self.process.kill()
             self.process = None
 
     def _next_id(self) -> int:
-        self._request_counter += 1
-        return self._request_counter
+        with self._lock:
+            self._request_counter += 1
+            return self._request_counter
+
+    def _readline_with_timeout(self, timeout: float) -> Optional[str]:
+        """带超时机制的安全读取单行输出，防范子进程死锁或无限阻塞"""
+        if not self.process or not self.process.stdout:
+            return None
+        res_queue = queue.Queue(maxsize=1)
+
+        def _reader():
+            try:
+                line = self.process.stdout.readline()
+                res_queue.put((line, None))
+            except Exception as e:
+                res_queue.put((None, e))
+
+        t = threading.Thread(target=_reader, daemon=True)
+        t.start()
+        try:
+            line, err = res_queue.get(timeout=timeout)
+            if err:
+                raise err
+            return line
+        except queue.Empty:
+            return None
 
     def _send_raw(self, payload: Dict[str, Any], timeout: float = 30.0) -> Optional[Dict[str, Any]]:
-        """发送 JSON-RPC 消息并通过管道读取一行回复"""
-        if not self.process or self.process.poll() is not None:
-            logger.warning("检测到 MCP Server 子进程未运行，尝试重新拉起...")
-            self.start()
+        """发送 JSON-RPC 消息并通过管道在指定超时内读取一行回复"""
+        with self._lock:
+            if not self.process or self.process.poll() is not None:
+                logger.warning("检测到 MCP Server 子进程未运行，尝试重新拉起...")
+                self.start()
 
-        if not self.process or not self.process.stdin or not self.process.stdout:
-            raise RuntimeError("MCP Server 子进程管道未就绪")
-
-        req_line = json.dumps(payload, ensure_ascii=False) + "\n"
-        try:
-            self.process.stdin.write(req_line)
-            self.process.stdin.flush()
-
-            # 读取单行响应
-            resp_line = self.process.stdout.readline()
-            if not resp_line:
-                logger.error("读取到空响应，MCP Server 可能已退出")
+            if not self.process or not self.process.stdin or not self.process.stdout:
+                logger.error("MCP Server 子进程管道未就绪")
                 return None
-            return json.loads(resp_line.strip())
-        except Exception as e:
-            logger.error(f"与 MCP Server 通信出现异常: {e}")
-            self.stop()
-            return None
+
+            req_line = json.dumps(payload, ensure_ascii=False) + "\n"
+            try:
+                self.process.stdin.write(req_line)
+                self.process.stdin.flush()
+
+                # 带超时读取单行响应
+                resp_line = self._readline_with_timeout(timeout)
+                if resp_line is None:
+                    logger.error(f"MCP Server 在指定超时 ({timeout}s) 内未返回响应，执行自愈重启...")
+                    self.stop()
+                    self.start()
+                    return None
+
+                if not resp_line:
+                    logger.error("读取到空响应，MCP Server 可能已异常退出，执行自愈重启...")
+                    self.stop()
+                    self.start()
+                    return None
+
+                return json.loads(resp_line.strip())
+            except Exception as e:
+                logger.error(f"与 MCP Server 通信出现异常: {e}")
+                self.stop()
+                return None
 
     def get_prompt(self, name: str = "sre_engineer", current_time: str = "") -> str:
         """从 MCP Server 动态获取角色设定与提示词"""
@@ -157,8 +204,11 @@ class MCPClient:
             return resp["result"].get("tools", [])
         return []
 
-    def get_openai_tools(self) -> List[Dict[str, Any]]:
-        """将 MCP Tools Schema 自动转换映射为 OpenAI 兼容的 Function Calling 格式"""
+    def get_openai_tools(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
+        """将 MCP Tools Schema 自动转换映射为 OpenAI 兼容的 Function Calling 格式，支持内存缓存加速"""
+        if not force_refresh and self._tools_cache is not None:
+            return self._tools_cache
+
         mcp_tools = self.list_tools()
         openai_tools = []
         for t in mcp_tools:
@@ -170,6 +220,8 @@ class MCPClient:
                     "parameters": t.get("parameters", {"type": "object", "properties": {}})
                 }
             })
+        if openai_tools:
+            self._tools_cache = openai_tools
         return openai_tools
 
     def call_tool(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:

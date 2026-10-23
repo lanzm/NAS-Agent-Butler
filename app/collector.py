@@ -11,9 +11,13 @@ import psutil
 from typing import Optional
 
 try:
-    import docker
+    from app.docker_client import get_docker_client
 except ImportError:
-    docker = None
+    try:
+        from docker_client import get_docker_client
+    except ImportError:
+        def get_docker_client():
+            return None
 
 
 def calc_container_uptime(started_at_str: str) -> str:
@@ -23,7 +27,7 @@ def calc_container_uptime(started_at_str: str) -> str:
     try:
         clean_str = started_at_str.split(".")[0].replace("Z", "")
         start_dt = datetime.datetime.fromisoformat(clean_str)
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
         diff = now - start_dt
         days = diff.days
         hours = diff.seconds // 3600
@@ -167,11 +171,18 @@ class SystemCollector:
             if label in seen:
                 continue
             try:
-                st = os.statvfs(path)
-                total = st.f_blocks * st.f_frsize
-                free = st.f_bavail * st.f_frsize
-                used = total - free
-                pct = int((used / total) * 100) if total > 0 else 0
+                if hasattr(os, "statvfs"):
+                    st = os.statvfs(path)
+                    total = st.f_blocks * st.f_frsize
+                    free = st.f_bavail * st.f_frsize
+                    used = total - free
+                    pct = int((used / total) * 100) if total > 0 else 0
+                else:
+                    u = psutil.disk_usage(path)
+                    total = u.total
+                    free = u.free
+                    used = u.used
+                    pct = int(u.percent)
                 seen.add(label)
 
                 disks.append({
@@ -210,11 +221,11 @@ class SystemCollector:
         """查询 Docker 容器列表与健康状态"""
         containers = []
         alarms = []
-        if not docker:
+        client = get_docker_client()
+        if not client:
             return [{"name": "Docker模块未就绪", "status": "missing_lib", "is_running": False, "health": "unknown"}], []
 
         try:
-            client = docker.DockerClient(base_url="unix://var/run/docker.sock")
             for c in client.containers.list(all=True):
                 health = "unknown"
                 state = c.attrs.get("State", {})
@@ -300,10 +311,9 @@ class SystemCollector:
 
         # 6. 获取出网 IP
         try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            host_ip = s.getsockname()[0]
-            s.close()
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(("8.8.8.8", 80))
+                host_ip = s.getsockname()[0]
         except Exception:
             host_ip = "127.0.0.1"
 

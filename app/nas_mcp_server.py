@@ -310,8 +310,14 @@ def execute_manage_docker_container(args: Dict[str, Any]) -> Dict[str, Any]:
     tail_lines = min(int(args.get("tail_lines", 50)), 200)
 
     try:
-        import docker
-        client = docker.from_env()
+        try:
+            from app.docker_client import get_docker_client
+        except ImportError:
+            from docker_client import get_docker_client
+
+        client = get_docker_client()
+        if not client:
+            return {"status": "error", "message": "Docker 守护进程未就绪或未运行"}
 
         if action == "list":
             containers = client.containers.list(all=True)

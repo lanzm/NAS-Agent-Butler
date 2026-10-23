@@ -271,13 +271,14 @@ class FeishuChannel(BaseChannel):
         return f"data:{mime_type};base64,{b64_str}", None
 
     def _animate_loading(self, placeholder_msg_id: str, stop_event: threading.Event, status_holder: list, poke_event: threading.Event):
-        """后台状态跳点与计时线程"""
+        """后台状态跳点与计时线程（智能降频防飞书 API 频控）"""
         start_time = time.time()
         dot_cycle = [".", "..", "..."]
         dot_idx = 0
 
         while not stop_event.is_set():
-            poke_event.wait(1.0)
+            # 阶段状态变化立即唤醒处理；默认等待 2.5 秒再刷新秒数跳点，减少 60% 冗余卡片 Patch 请求
+            poke_event.wait(2.5)
             poke_event.clear()
             if stop_event.is_set():
                 break
@@ -509,9 +510,18 @@ class FeishuChannel(BaseChannel):
 
             now = time.time()
             with self.processed_lock:
-                for old_id, ts in list(self.processed_messages.items()):
-                    if now - ts > 600:
-                        self.processed_messages.pop(old_id, None)
+                # 内存保护与容量淘汰：超过 1000 条时先清理过期记录，再按 FIFO 淘汰最老数据，彻底杜绝内存泄漏
+                if len(self.processed_messages) > 1000:
+                    for old_id, ts in list(self.processed_messages.items()):
+                        if now - ts > 300:
+                            self.processed_messages.pop(old_id, None)
+                    if len(self.processed_messages) > 1000:
+                        for old_id in list(self.processed_messages.keys())[:300]:
+                            self.processed_messages.pop(old_id, None)
+                else:
+                    for old_id, ts in list(self.processed_messages.items()):
+                        if now - ts > 600:
+                            self.processed_messages.pop(old_id, None)
 
                 if msg_id in self.processed_messages:
                     logger.info(f"忽略重复推送的消息: msg_id={msg_id}")

@@ -18,24 +18,10 @@ from typing import Dict, Any
 
 logger = logging.getLogger("feishu-bot.weather")
 
-MONTH_CN = ["正", "二", "三", "四", "五", "六", "七", "八", "九", "十", "冬", "腊"]
-DAY_CN = [
-    "初一", "初二", "初三", "初四", "初五", "初六", "初七", "初八", "初九", "初十",
-    "十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九", "二十",
-    "廿一", "廿二", "廿三", "廿四", "廿五", "廿六", "廿七", "廿八", "廿九", "三十"
-]
-GAN = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"]
-ZHI = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"]
-SHENGXIAO = ["鼠", "牛", "虎", "兔", "龙", "蛇", "马", "羊", "猴", "鸡", "狗", "猪"]
-
-SOLAR_TERMS_C = [
-    (1, 6, "小寒"), (1, 20, "大寒"), (2, 4, "立春"), (2, 19, "雨水"),
-    (3, 5, "惊蛰"), (3, 20, "春分"), (4, 5, "清明"), (4, 20, "谷雨"),
-    (5, 5, "立夏"), (5, 21, "小满"), (6, 5, "芒种"), (6, 21, "夏至"),
-    (7, 7, "小暑"), (7, 23, "大暑"), (8, 7, "立秋"), (8, 23, "处暑"),
-    (9, 7, "白露"), (9, 23, "秋分"), (10, 8, "寒露"), (10, 23, "霜降"),
-    (11, 7, "立冬"), (11, 22, "小雪"), (12, 7, "大雪"), (12, 22, "冬至")
-]
+try:
+    from app.calendar_helper import GAN, ZHI, SHENGXIAO, MONTH_CN, DAY_CN, SOLAR_TERMS_C, get_lunar_date
+except ImportError:
+    from calendar_helper import GAN, ZHI, SHENGXIAO, MONTH_CN, DAY_CN, SOLAR_TERMS_C, get_lunar_date
 
 WEATHER_ZH_MAP = {
     "sunny": "晴朗",
@@ -149,12 +135,17 @@ def get_calendar_info(dt: datetime.date = None) -> Dict[str, Any]:
         from lunardate import LunarDate
         ld = LunarDate.from_solar_date(dt.year, dt.month, dt.day)
         sx = SHENGXIAO[(ld.year - 4) % 12]
-        gz_year = f"{GAN[(ld.year - 4) % 10]}{ZHI[(ld.year - 4) % 12]}"
-        m_name = f"闰{MONTH_CN[ld.month-1]}" if ld.isLeapMonth else MONTH_CN[ld.month-1]
+        is_leap = getattr(ld, "is_leap_month", getattr(ld, "isLeapMonth", False))
+        m_name = f"闰{MONTH_CN[ld.month-1]}" if is_leap else MONTH_CN[ld.month-1]
         d_name = DAY_CN[ld.day - 1] if 1 <= ld.day <= len(DAY_CN) else f"{ld.day}日"
         lunar_str = f"{gz_year}({sx})年 {m_name}月{d_name}"
     except Exception as e:
-        logger.debug(f"农历转换降级: {e}")
+        logger.debug(f"优先 lunardate 转换未命中，回退本地算法: {e}")
+        try:
+            l_info = get_lunar_date(dt)
+            lunar_str = l_info.get("text", "农历未知")
+        except Exception:
+            lunar_str = "农历未知"
 
     # 2. 节气判定
     term_str = ""

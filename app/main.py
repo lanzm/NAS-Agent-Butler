@@ -69,7 +69,8 @@ channel_manager.register(feishu_channel)
 # tg_channel = TelegramChannel(action_handler)
 # channel_manager.register(tg_channel)
 
-# --- 报警状态记录 ---
+# --- 报警状态记录（加锁保障调度线程与回调并发安全） ---
+_alarm_lock = threading.Lock()
 last_alarm_time = 0
 prev_alarm_state = False
 
@@ -159,39 +160,40 @@ def run_health_check_task(task_config: dict):
         alarms = data.get("alarms", [])
         now = time.time()
 
-        if is_alarm:
-            if not prev_alarm_state or (now - last_alarm_time > ALARM_COOLDOWN):
-                logger.warning(f"检测到系统异常告警 [{task_name}]: {alarms}")
-                if prompt_template:
-                    alarm_context = "\n".join(f"- {a}" for a in alarms)
-                    full_prompt = (
-                        f"{prompt_template.strip()}\n\n"
-                        f"【系统当前检测到的活跃异常告警】：\n{alarm_context}"
-                    )
-                    ai_res = action_handler.agent.chat(full_prompt)
-                    content_text = ai_res.get("text", "异常诊断分析完成。")
-                    trace_tag = ai_res.get("trace_tag", "")
-                    card = build_ai_response_card(
-                        content=content_text,
-                        title=f"🚨 {task_name}",
-                        trace_tag=trace_tag
-                    )
-                    card["header"]["template"] = "red"
-                else:
-                    card = build_status_card(data)
+        with _alarm_lock:
+            if is_alarm:
+                if not prev_alarm_state or (now - last_alarm_time > ALARM_COOLDOWN):
+                    logger.warning(f"检测到系统异常告警 [{task_name}]: {alarms}")
+                    if prompt_template:
+                        alarm_context = "\n".join(f"- {a}" for a in alarms)
+                        full_prompt = (
+                            f"{prompt_template.strip()}\n\n"
+                            f"【系统当前检测到的活跃异常告警】：\n{alarm_context}"
+                        )
+                        ai_res = action_handler.agent.chat(full_prompt)
+                        content_text = ai_res.get("text", "异常诊断分析完成。")
+                        trace_tag = ai_res.get("trace_tag", "")
+                        card = build_ai_response_card(
+                            content=content_text,
+                            title=f"🚨 {task_name}",
+                            trace_tag=trace_tag
+                        )
+                        card["header"]["template"] = "red"
+                    else:
+                        card = build_status_card(data)
 
-                channel_manager.broadcast_card(card)
-                last_alarm_time = now
-                prev_alarm_state = True
-        else:
-            if prev_alarm_state:
-                logger.info(f"系统各项指标已从异常中恢复正常 [{task_name}]")
-                if notify_on_recovery:
-                    card = build_status_card(data)
-                    card["header"]["template"] = "green"
-                    card["header"]["title"]["content"] = "✅ NAS 运行指标恢复正常"
                     channel_manager.broadcast_card(card)
-                prev_alarm_state = False
+                    last_alarm_time = now
+                    prev_alarm_state = True
+            else:
+                if prev_alarm_state:
+                    logger.info(f"系统各项指标已从异常中恢复正常 [{task_name}]")
+                    if notify_on_recovery:
+                        card = build_status_card(data)
+                        card["header"]["template"] = "green"
+                        card["header"]["title"]["content"] = "✅ NAS 运行指标恢复正常"
+                        channel_manager.broadcast_card(card)
+                    prev_alarm_state = False
     except Exception as e:
         logger.error(f"[{task_name}] 巡检异常: {e}")
 
