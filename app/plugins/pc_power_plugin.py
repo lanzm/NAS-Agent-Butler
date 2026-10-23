@@ -88,3 +88,28 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
             return {"status": "error", "message": f"远程电源调度异常: {str(e)}"}
 
     return {"status": "error", "message": f"未知电源动作: {action}"}
+
+
+try:
+    from app.plugins.base import BasePlugin
+except ImportError:
+    from plugins.base import BasePlugin
+
+
+class PCPowerPlugin(BasePlugin):
+    """PC 远程电源管理插件类实现"""
+
+    @property
+    def name(self) -> str:
+        return "manage_pc_power"
+
+    @property
+    def tool_spec(self) -> Dict[str, Any]:
+        return TOOL_SPEC
+
+    def is_enabled(self) -> bool:
+        return is_enabled()
+
+    def execute(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        return execute(args)
+

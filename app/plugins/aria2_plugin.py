@@ -152,3 +152,28 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
             return {"status": "error", "message": "必须提供任务 GID"}
         return {"status": "success", "result": rpc_call("aria2.unpause", [gid])}
     return {"status": "error", "message": f"未知动作: {action}"}
+
+
+try:
+    from app.plugins.base import BasePlugin
+except ImportError:
+    from plugins.base import BasePlugin
+
+
+class Aria2Plugin(BasePlugin):
+    """Aria2 离线下载插件类实现"""
+
+    @property
+    def name(self) -> str:
+        return "manage_aria2_download"
+
+    @property
+    def tool_spec(self) -> Dict[str, Any]:
+        return TOOL_SPEC
+
+    def is_enabled(self) -> bool:
+        return is_enabled()
+
+    def execute(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        return execute(args)
+

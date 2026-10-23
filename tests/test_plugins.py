@@ -58,5 +58,24 @@ class TestPCPowerPlugin(unittest.TestCase):
         self.assertTrue(pc_power_plugin.send_magic_packet("AA-BB-CC-DD-EE-FF"))
 
 
+class TestBasePluginContract(unittest.TestCase):
+    """测试扩展插件契约规范与 BasePlugin 继承"""
+
+    def test_plugin_classes(self):
+        from app.plugins.base import BasePlugin
+        from app.plugins.firewall_plugin import FirewallPlugin
+        from app.plugins.aria2_plugin import Aria2Plugin
+        from app.plugins.pc_power_plugin import PCPowerPlugin
+
+        plugins = [FirewallPlugin(), Aria2Plugin(), PCPowerPlugin()]
+        for p in plugins:
+            self.assertIsInstance(p, BasePlugin)
+            self.assertTrue(len(p.name) > 0)
+            self.assertIn("name", p.tool_spec)
+            self.assertIn("description", p.tool_spec)
+            self.assertIn("parameters", p.tool_spec)
+            self.assertIsInstance(p.is_enabled(), bool)
+
+
 if __name__ == "__main__":
     unittest.main()

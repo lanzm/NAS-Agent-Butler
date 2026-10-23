@@ -114,3 +114,28 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         return {"status": "error", "message": f"未知动作: {action}"}
     except Exception as e:
         return {"status": "error", "message": f"防火墙指令执行失败: {str(e)}"}
+
+
+try:
+    from app.plugins.base import BasePlugin
+except ImportError:
+    from plugins.base import BasePlugin
+
+
+class FirewallPlugin(BasePlugin):
+    """Fail2ban 防火墙入侵防御插件类实现"""
+
+    @property
+    def name(self) -> str:
+        return "manage_firewall_security"
+
+    @property
+    def tool_spec(self) -> Dict[str, Any]:
+        return TOOL_SPEC
+
+    def is_enabled(self) -> bool:
+        return is_enabled()
+
+    def execute(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        return execute(args)
+
