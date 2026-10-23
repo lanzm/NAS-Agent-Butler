@@ -9,6 +9,7 @@ import os
 import json
 import re
 from typing import Optional
+from app.config import settings
 
 I18N = {
     "zh": {
@@ -52,7 +53,7 @@ I18N = {
 }
 
 def get_i18n(key: str, default: str = "") -> str:
-    lang = "en" if os.getenv("DEFAULT_LANGUAGE", "zh").strip().lower() == "en" else "zh"
+    lang = "en" if os.getenv("DEFAULT_LANGUAGE", settings.default_language).strip().lower() == "en" else "zh"
     return I18N.get(lang, I18N["zh"]).get(key, default)
 
 

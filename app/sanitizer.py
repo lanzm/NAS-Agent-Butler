@@ -33,21 +33,42 @@ def sanitize_text(text: str) -> str:
     if not text:
         return text
 
-    # 1. 动态抹除当前系统加载的所有敏感环境变量值（最彻底的保底）
+    # 1. 动态抹除当前系统加载的所有敏感环境变量值与配置凭据（最彻底的保底）
     sensitive_env_keys = [
         "FEISHU_APP_SECRET",
         "FEISHU_APP_ID",
         "OPENAI_API_KEY",
         "AI_API_KEY",
         "PEXELS_API_KEY",
+        "ARIA2_RPC_SECRET",
         "ARIA2_SECRET",
         "PC_REMOTE_PASSWD",
         "PC_REMOTE_USER",
+        "TARGET_PC_USER",
+        "TARGET_PC_IP",
+        "TARGET_PC_MAC",
     ]
     for env_name in sensitive_env_keys:
         real_val = os.getenv(env_name, "").strip()
         if real_val and len(real_val) >= 4:
             text = text.replace(real_val, f"[PROTECTED_{env_name}]")
+
+    # 1.1 联动配置对象 settings 中已加载的凭据
+    try:
+        from app.config import settings
+        config_secrets = [
+            ("OPENAI_API_KEY", settings.openai_api_key),
+            ("FEISHU_APP_SECRET", settings.feishu_app_secret),
+            ("FEISHU_APP_ID", settings.feishu_app_id),
+            ("ARIA2_RPC_SECRET", settings.aria2_rpc_secret),
+            ("TARGET_PC_MAC", settings.target_pc_mac),
+        ]
+        for name, secret in config_secrets:
+            s_val = (secret or "").strip()
+            if s_val and len(s_val) >= 4 and s_val in text:
+                text = text.replace(s_val, f"[PROTECTED_{name}]")
+    except Exception:
+        pass
 
     # 2. 正则脱敏 key=value 类型的字段 (如 password=123456 -> password=[PROTECTED])
     text = SENSITIVE_KEY_PATTERN.sub(r'\1\2\3[PROTECTED]\3', text)

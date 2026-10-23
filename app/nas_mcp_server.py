@@ -33,16 +33,6 @@ from app.docker_client import get_docker_client
 from app.weather_calendar_helper import get_weather_calendar_summary
 from app.plugins import firewall_plugin, aria2_plugin, pc_power_plugin
 
-# 确保 UTF-8 编码读写，防止跨平台 Windows/Linux 管道乱码
-sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', write_through=True)
-
-# 日志输出至 stderr，严禁输出到 stdout（stdout 专用于 JSON-RPC 报文）
-logging.basicConfig(
-    stream=sys.stderr,
-    level=logging.INFO,
-    format="[%(asctime)s] [NAS_MCP_SERVER] [%(levelname)s] %(message)s"
-)
 logger = logging.getLogger("butler.mcp.server")
 
 # ==============================================================================
@@ -686,6 +676,18 @@ def handle_request(req: Dict[str, Any]) -> Dict[str, Any]:
     return jsonrpc_error(req_id, -32601, f"未知方法: {method}")
 
 def main():
+    # 确保 UTF-8 编码读写，防止跨平台 Windows/Linux 管道乱码
+    sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', write_through=True)
+
+    # 独立运行守护进程模式时输出日志至 stderr，严禁输出到 stdout（stdout 专用于 JSON-RPC 报文）
+    if not logging.getLogger().handlers:
+        logging.basicConfig(
+            stream=sys.stderr,
+            level=logging.INFO,
+            format="[%(asctime)s] [NAS_MCP_SERVER] [%(levelname)s] %(message)s"
+        )
+
     logger.info("NAS MCP Server 启动，等待标准输入指令流...")
     for line in sys.stdin:
         line = line.strip()

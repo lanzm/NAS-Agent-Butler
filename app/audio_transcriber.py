@@ -9,6 +9,7 @@ import base64
 import logging
 import requests
 from typing import Tuple, Optional
+from app.config import settings
 
 logger = logging.getLogger("butler.transcriber")
 
@@ -44,7 +45,8 @@ def transcribe_audio_with_gemini(audio_bytes: bytes) -> Tuple[Optional[str], Opt
         mime_type = detect_audio_mime(audio_bytes)
         audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
 
-        api_base = os.getenv("OPENAI_API_BASE", "https://generativelanguage.googleapis.com/v1beta/openai").rstrip("/")
+        raw_api_base = os.getenv("OPENAI_API_BASE", settings.openai_api_base) or "https://generativelanguage.googleapis.com/v1beta/openai"
+        api_base = raw_api_base.rstrip("/")
         if api_base.endswith("/openai"):
             gemini_base = api_base[:-7]
         elif api_base.endswith("/v1"):
@@ -52,8 +54,8 @@ def transcribe_audio_with_gemini(audio_bytes: bytes) -> Tuple[Optional[str], Opt
         else:
             gemini_base = api_base
 
-        api_key = os.getenv("OPENAI_API_KEY", "")
-        model = os.getenv("OPENAI_MODEL") or os.getenv("AI_MODEL", "gemini-flash-lite-latest")
+        api_key = os.getenv("OPENAI_API_KEY", settings.openai_api_key)
+        model = os.getenv("OPENAI_MODEL") or os.getenv("AI_MODEL", settings.openai_model) or "gemini-flash-lite-latest"
 
         # 安全防泄露：API Key 通过请求头传递，杜绝在 URL Query 中暴露明文凭据
         url = f"{gemini_base}/models/{model}:generateContent"

@@ -9,6 +9,7 @@ from unittest.mock import patch, MagicMock
 from app.weather_calendar_helper import get_wttr_weather, get_calendar_info
 from app.calendar_helper import _get_lunar_year_days, get_lunar_date
 from app.nas_mcp_server import execute_search_web_info
+from app.sanitizer import sanitize_text
 
 
 class TestWeatherCalendarHelper(unittest.TestCase):
@@ -101,6 +102,36 @@ class TestWebSearchHelper(unittest.TestCase):
         self.assertEqual(res["status"], "success")
         self.assertIn("测试标题一", res["markdown_result"])
         self.assertIn("测试标题二", res["markdown_result"])
+
+
+class TestSanitizer(unittest.TestCase):
+    """测试敏感凭据脱敏与过滤"""
+
+    def test_sanitize_empty_or_none(self):
+        self.assertEqual(sanitize_text(""), "")
+        self.assertIsNone(sanitize_text(None))
+
+    def test_sanitize_env_secrets(self):
+        with patch.dict("os.environ", {
+            "ARIA2_RPC_SECRET": "my_super_secret_rpc_token_12345",
+            "FEISHU_APP_SECRET": "lark_app_secret_xyz_8888"
+        }):
+            raw = "Connecting to Aria2 with secret my_super_secret_rpc_token_12345 and Feishu lark_app_secret_xyz_8888"
+            sanitized = sanitize_text(raw)
+            self.assertNotIn("my_super_secret_rpc_token_12345", sanitized)
+            self.assertNotIn("lark_app_secret_xyz_8888", sanitized)
+            self.assertIn("[PROTECTED_ARIA2_RPC_SECRET]", sanitized)
+            self.assertIn("[PROTECTED_FEISHU_APP_SECRET]", sanitized)
+
+    def test_sanitize_patterns(self):
+        raw = "password=SuperPassword123; db=postgres://root:Admin12345@localhost:5432/mydb; Header: sk-abcdefghijklmnopqrstuvwxyz123"
+        sanitized = sanitize_text(raw)
+        self.assertNotIn("SuperPassword123", sanitized)
+        self.assertNotIn("Admin12345", sanitized)
+        self.assertNotIn("sk-abcdefghijklmnopqrstuvwxyz123", sanitized)
+        self.assertIn("[PROTECTED]", sanitized)
+        self.assertIn("[PROTECTED_DB_PWD]", sanitized)
+        self.assertIn("[PROTECTED_API_KEY]", sanitized)
 
 
 if __name__ == "__main__":

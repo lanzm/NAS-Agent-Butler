@@ -4,6 +4,7 @@ action_handler.py - 飞书用户指令与交互动作分发器 (MCP + Trace 适�
 """
 import os
 from typing import Optional
+from app.config import settings
 from app.collector import SystemCollector
 from app.card_builder import (
     build_status_card,
@@ -24,7 +25,7 @@ class ActionHandler:
         content_text = ai_result.get("text", "已处理。")
         trace_tag = ai_result.get("trace_tag", "")
         
-        lang = os.getenv("DEFAULT_LANGUAGE", "zh").strip().lower()
+        lang = os.getenv("DEFAULT_LANGUAGE", settings.default_language).strip().lower()
         if image_url:
             title = "🖼️ Image Analysis" if lang == "en" else "🖼️ 图片视觉诊断"
         else:
@@ -35,7 +36,7 @@ class ActionHandler:
     def handle_card_action(self, action_value: dict) -> dict:
         """响应历史卡片中的按钮交互动作"""
         act = action_value.get("action")
-        lang = os.getenv("DEFAULT_LANGUAGE", "zh").strip().lower()
+        lang = os.getenv("DEFAULT_LANGUAGE", settings.default_language).strip().lower()
         
         if act == "refresh_status":
             new_data = self.collector.collect()
@@ -68,6 +69,18 @@ class ActionHandler:
                     title=title,
                     trace_tag=ai_res.get("trace_tag")
                 )
+            }
+
+        elif act == "cancel_action":
+            toast_msg = "Operation cancelled" if lang == "en" else "操作已取消"
+            title = "❌ Operation Cancelled" if lang == "en" else "❌ 操作已取消"
+            content = "The requested sensitive operation has been cancelled." if lang == "en" else "当前敏感操作已安全取消。"
+            return {
+                "toast": {
+                    "type": "info",
+                    "content": toast_msg
+                },
+                "card": build_message_card(title=title, content=content, template="grey")
             }
             
         toast_unknown = f"Unknown action: {act}" if lang == "en" else f"未知动作: {act}"
