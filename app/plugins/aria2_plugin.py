@@ -5,14 +5,54 @@ plugins/aria2_plugin.py - Aria2 离线下载扩展插件
 """
 
 import os
+import urllib.parse
+import ipaddress
 import requests
 from typing import Dict, Any
 
-RPC_URL = os.getenv("ARIA2_RPC_URL", "").strip()
-RPC_SECRET = os.getenv("ARIA2_RPC_SECRET", "").strip()
+def get_rpc_url() -> str:
+    return os.getenv("ARIA2_RPC_URL", "").strip()
+
+def get_rpc_secret() -> str:
+    return os.getenv("ARIA2_RPC_SECRET", "").strip()
 
 def is_enabled() -> bool:
-    return bool(RPC_URL)
+    return bool(get_rpc_url())
+
+BLOCKED_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
+
+def validate_download_url(url: str) -> tuple[bool, str]:
+    """校验下载链接，防止协议注入与内网 SSRF 探测"""
+    if not url:
+        return False, "必须提供下载链接 (url)"
+    
+    if url.startswith("magnet:?"):
+        return True, ""
+        
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except Exception as e:
+        return False, f"下载链接解析异常: {e}"
+        
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in ("http", "https", "ftp"):
+        return False, f"安全拦截：不支持的下载协议 `{scheme}`，仅支持 HTTP/HTTPS/FTP 与 magnet 链接"
+        
+    hostname = parsed.hostname
+    if not hostname:
+        return False, "下载链接未包含有效的目标主机地址"
+        
+    if hostname.lower() in BLOCKED_HOSTS:
+        return False, f"安全拦截：禁止向本地回环主机 `{hostname}` 发起离线下载"
+        
+    try:
+        ip_obj = ipaddress.ip_address(hostname)
+        if ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_unspecified:
+            return False, f"安全拦截：禁止向内部保留地址 `{hostname}` 发起离线下载"
+    except ValueError:
+        pass
+        
+    return True, ""
 
 TOOL_SPEC = {
     "name": "manage_aria2_download",
@@ -52,7 +92,12 @@ def format_bytes(size):
 def rpc_call(method, params=None):
     if params is None:
         params = []
-    full_params = [f"token:{RPC_SECRET}"] + params if RPC_SECRET else params
+    rpc_url = get_rpc_url()
+    rpc_secret = get_rpc_secret()
+    if not rpc_url:
+        return {"error": "Aria2 RPC 地址未配置"}
+
+    full_params = [f"token:{rpc_secret}"] + params if rpc_secret else params
     payload = {
         "jsonrpc": "2.0",
         "id": "nas_butler",
@@ -60,7 +105,7 @@ def rpc_call(method, params=None):
         "params": full_params
     }
     try:
-        resp = requests.post(RPC_URL, json=payload, timeout=5)
+        resp = requests.post(rpc_url, json=payload, timeout=5)
         data = resp.json()
         if "error" in data:
             return {"error": data["error"].get("message", str(data["error"]))}
@@ -86,8 +131,9 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
             "active_tasks": active if isinstance(active, list) else []
         }
     elif action == "add":
-        if not url:
-            return {"status": "error", "message": "必须提供下载链接 (url)"}
+        is_valid, err_msg = validate_download_url(url)
+        if not is_valid:
+            return {"status": "error", "message": err_msg}
         res = rpc_call("aria2.addUri", [[url]])
         if isinstance(res, dict) and "error" in res:
             return {"status": "error", "message": res["error"]}

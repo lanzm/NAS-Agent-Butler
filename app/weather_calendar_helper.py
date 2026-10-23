@@ -8,15 +8,15 @@ weather_calendar_helper.py - 免 Key 实时天气 (wttr.in) 与本地农历/节�
 """
 
 import os
+import re
 import json
 import logging
 import datetime
 import urllib.request
+import urllib.parse
 from typing import Dict, Any
 
 logger = logging.getLogger("feishu-bot.weather")
-
-DEFAULT_CITY = os.getenv("DEFAULT_CITY", "北京").strip()
 
 MONTH_CN = ["正", "二", "三", "四", "五", "六", "七", "八", "九", "十", "冬", "腊"]
 DAY_CN = [
@@ -203,7 +203,11 @@ def get_calendar_info(dt: datetime.date = None) -> Dict[str, Any]:
 
 def get_wttr_weather(city: str = None) -> Dict[str, Any]:
     """调用 wttr.in 免 Key API 获取实时天气与今日预报"""
-    query_city = (city or DEFAULT_CITY or "北京").strip()
+    default_city = os.getenv("DEFAULT_CITY", "北京").strip() or "北京"
+    raw_city = (city or default_city).strip()
+    
+    # 防注入与 SSRF：严格净化城市参数，仅允许汉字、英文字母、数字和横杠空格，最长 30 字符
+    query_city = re.sub(r'[^\w\u4e00-\u9fa5\s-]', '', raw_city)[:30].strip() or "北京"
     
     # 常用城市拼音映射或直接使用传入名称
     city_map = {
@@ -231,9 +235,10 @@ def get_wttr_weather(city: str = None) -> Dict[str, Any]:
             maxtemp = today.get("maxtempC", "--")
             mintemp = today.get("mintempC", "--")
 
-            # 提取下雨概率
+            # 提取全天所有时段最高下雨概率，避免仅取半夜 00:00 数据失真
             hourly = today.get("hourly", [])
-            rain_chance = hourly[0].get("chanceofrain", "0") if hourly else "0"
+            rain_values = [int(h.get("chanceofrain", 0)) for h in hourly if str(h.get("chanceofrain", "")).isdigit()]
+            rain_chance = str(max(rain_values)) if rain_values else "0"
 
             advice_list = []
             try:

@@ -49,14 +49,14 @@ SOLAR_TERMS_C = [
 
 
 def _get_lunar_year_days(year: int) -> int:
-    """计算农历年总天数"""
+    """计算农历年总天数 (12个月基准天数348天，按大月+1天及闰月天数累加)"""
     total = 348
     code = LUNAR_INFO[year - 1900]
-    for bit in range(0x8000, 0x8, -1):
-        if (bit := bit >> 1) == 0:
-            break
-        if code & bit:
+    mask = 0x8000
+    for _ in range(12):
+        if code & mask:
             total += 1
+        mask >>= 1
     # 加上闰月天数
     leap_month = code & 0xf
     if leap_month:

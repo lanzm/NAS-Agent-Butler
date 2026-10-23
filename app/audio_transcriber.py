@@ -30,19 +30,33 @@ def transcribe_audio_with_gemini(audio_bytes: bytes) -> Tuple[Optional[str], Opt
             mime_type = "audio/mp3"
         elif audio_bytes.startswith(b"fLaC"):
             mime_type = "audio/flac"
+        elif len(audio_bytes) >= 8 and audio_bytes[4:8] in [b"ftyp", b"M4A "]:
+            mime_type = "audio/mp4"
+        elif audio_bytes.startswith(b"\xff\xf1") or audio_bytes.startswith(b"\xff\xf9"):
+            mime_type = "audio/aac"
+        elif audio_bytes.startswith(b"OggS"):
+            mime_type = "audio/ogg"
 
         audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
 
         api_base = os.getenv("OPENAI_API_BASE", "https://generativelanguage.googleapis.com/v1beta/openai").rstrip("/")
         if api_base.endswith("/openai"):
             gemini_base = api_base[:-7]
+        elif api_base.endswith("/v1"):
+            gemini_base = api_base[:-3]
         else:
             gemini_base = api_base
 
         api_key = os.getenv("OPENAI_API_KEY", "")
         model = os.getenv("OPENAI_MODEL") or os.getenv("AI_MODEL", "gemini-flash-lite-latest")
 
-        url = f"{gemini_base}/models/{model}:generateContent?key={api_key}"
+        # 安全防泄露：API Key 通过请求头传递，杜绝在 URL Query 中暴露明文凭据
+        url = f"{gemini_base}/models/{model}:generateContent"
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key,
+            "Authorization": f"Bearer {api_key}"
+        }
         payload = {
             "contents": [
                 {
@@ -62,7 +76,7 @@ def transcribe_audio_with_gemini(audio_bytes: bytes) -> Tuple[Optional[str], Opt
             ]
         }
 
-        resp = requests.post(url, json=payload, timeout=30)
+        resp = requests.post(url, headers=headers, json=payload, timeout=30)
         if resp.status_code != 200:
             try:
                 err_json = resp.json()

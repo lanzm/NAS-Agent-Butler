@@ -6,17 +6,21 @@ plugins/firewall_plugin.py - Fail2ban 安全防火墙插件
 
 import os
 import re
+import ipaddress
 try:
     import docker
 except ImportError:
     docker = None
 from typing import Dict, Any
 
-CONTAINER_NAME = os.getenv("FAIL2BAN_CONTAINER_NAME", "").strip()
-DEFAULT_JAIL = os.getenv("FAIL2BAN_JAIL", "caddy-services").strip()
+def get_container_name() -> str:
+    return os.getenv("FAIL2BAN_CONTAINER_NAME", "").strip()
+
+def get_default_jail() -> str:
+    return os.getenv("FAIL2BAN_JAIL", "caddy-services").strip()
 
 def is_enabled() -> bool:
-    return bool(CONTAINER_NAME)
+    return bool(get_container_name())
 
 TOOL_SPEC = {
     "name": "manage_firewall_security",
@@ -35,32 +39,48 @@ TOOL_SPEC = {
             },
             "jail": {
                 "type": "string",
-                "description": f"Fail2ban 规则链名称，默认 {DEFAULT_JAIL}",
-                "default": DEFAULT_JAIL
+                "description": "Fail2ban 规则链名称，默认读取系统配置 (如 caddy-services)",
+                "default": "caddy-services"
             }
         },
         "required": ["action"]
     }
 }
 
+JAIL_PATTERN = re.compile(r'^[a-zA-Z0-9_\-]+$')
+
 def execute(args: Dict[str, Any]) -> Dict[str, Any]:
-    if not is_enabled():
+    container_name = get_container_name()
+    if not container_name:
         return {"status": "error", "message": "Fail2ban 插件未配置启用，请在 .env 中设置 FAIL2BAN_CONTAINER_NAME"}
+
+    action = args.get("action")
+    raw_ip = (args.get("ip") or "").strip()
+    jail = (args.get("jail") or get_default_jail()).strip()
+
+    # 防注入校验：jail 名称白名单
+    if not JAIL_PATTERN.match(jail):
+        return {"status": "error", "message": f"非法 jail 名称: `{jail}`，仅允许字母、数字、下划线及横杠"}
+
+    validated_ip = None
+    if action == "unban":
+        if not raw_ip:
+            return {"status": "error", "message": "解封必须提供目标 IP"}
+        try:
+            validated_ip = str(ipaddress.ip_address(raw_ip))
+        except ValueError:
+            return {"status": "error", "message": f"目标 IP 格式非法: `{raw_ip}`"}
 
     if not docker:
         return {"status": "error", "message": "Docker 模块未就绪"}
 
-    action = args.get("action")
-    target_ip = (args.get("ip") or "").strip()
-    jail = (args.get("jail") or DEFAULT_JAIL).strip()
-
     try:
         client = docker.from_env()
-        guard = client.containers.get(CONTAINER_NAME)
+        guard = client.containers.get(container_name)
 
         if action == "status":
-            cmd = f"fail2ban-client status {jail}"
-            exec_res = guard.exec_run(cmd)
+            # 以 list 传参，严禁 shell 字符串插值执行
+            exec_res = guard.exec_run(["fail2ban-client", "status", jail])
             out = exec_res.output.decode("utf-8", errors="replace")
             
             banned_match = re.search(r'Banned IP list:\s*(.*)', out)
@@ -73,17 +93,14 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
                 "banned_ips": banned_ips
             }
         elif action == "unban":
-            if not target_ip:
-                return {"status": "error", "message": "解封必须提供目标 IP"}
-            cmd = f"fail2ban-client set {jail} unbanip {target_ip}"
-            exec_res = guard.exec_run(cmd)
+            exec_res = guard.exec_run(["fail2ban-client", "set", jail, "unbanip", validated_ip])
             out = exec_res.output.decode("utf-8", errors="replace").strip()
             return {
                 "status": "success",
-                "target_ip": target_ip,
+                "target_ip": validated_ip,
                 "jail": jail,
                 "result": out,
-                "message": f"IP `{target_ip}` 已在 `{jail}` 规则链中执行解封。"
+                "message": f"IP `{validated_ip}` 已在 `{jail}` 规则链中执行解封。"
             }
         return {"status": "error", "message": f"未知动作: {action}"}
     except Exception as e:

@@ -239,6 +239,11 @@ class FeishuChannel(BaseChannel):
             data_bytes = file_obj.read() if hasattr(file_obj, "read") else file_obj
             if not data_bytes:
                 return None, "⚠️ 读取到的资源内容为空"
+
+            # 安全防护：资源文件最大限制 15MB，防止内存占满溢出
+            if len(data_bytes) > 15 * 1024 * 1024:
+                return None, f"⚠️ 资源文件过大 ({len(data_bytes) / 1024 / 1024:.1f}MB)，超过系统 15MB 上限"
+
             return data_bytes, None
         except Exception as e:
             logger.error(f"下载资源文件异常: {e}")
@@ -249,6 +254,10 @@ class FeishuChannel(BaseChannel):
         image_bytes, err = self.download_file_bytes(msg_id, image_key, resource_type="image")
         if not image_bytes:
             return None, err
+
+        # 安全防护：限制图片最大 10MB
+        if len(image_bytes) > 10 * 1024 * 1024:
+            return None, f"⚠️ 图片体积过大 ({len(image_bytes) / 1024 / 1024:.1f}MB)，超过 10MB 处理限制"
 
         mime_type = "image/jpeg"
         if image_bytes.startswith(b"\x89PNG"):
