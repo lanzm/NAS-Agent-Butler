@@ -10,11 +10,16 @@ import ipaddress
 import requests
 from typing import Dict, Any
 
+try:
+    from app.config import settings
+except ImportError:
+    from config import settings
+
 def get_rpc_url() -> str:
-    return os.getenv("ARIA2_RPC_URL", "").strip()
+    return os.getenv("ARIA2_RPC_URL", settings.aria2_rpc_url).strip()
 
 def get_rpc_secret() -> str:
-    return os.getenv("ARIA2_RPC_SECRET", "").strip()
+    return os.getenv("ARIA2_RPC_SECRET", settings.aria2_rpc_secret).strip()
 
 def is_enabled() -> bool:
     return bool(get_rpc_url())

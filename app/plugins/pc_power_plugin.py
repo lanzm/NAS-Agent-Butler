@@ -9,14 +9,15 @@ import socket
 import subprocess
 from typing import Dict, Any
 
-ENABLED = os.getenv("ENABLE_PC_POWER", "false").strip().lower() == "true"
-TARGET_MAC = os.getenv("TARGET_PC_MAC", "").strip()
-TARGET_IP = os.getenv("TARGET_PC_IP", "").strip()
-TARGET_USER = os.getenv("TARGET_PC_USER", "Administrator").strip()
-TARGET_PORT = int(os.getenv("TARGET_PC_PORT", "22"))
+try:
+    from app.config import settings
+except ImportError:
+    from config import settings
 
 def is_enabled() -> bool:
-    return ENABLED and bool(TARGET_MAC)
+    enabled = os.getenv("ENABLE_PC_POWER", "").strip().lower() == "true" if "ENABLE_PC_POWER" in os.environ else settings.enable_pc_power
+    mac = os.getenv("TARGET_PC_MAC", settings.target_pc_mac).strip()
+    return enabled and bool(mac)
 
 TOOL_SPEC = {
     "name": "manage_pc_power",
@@ -51,14 +52,20 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
 
     action = args.get("action")
 
+    mac = os.getenv("TARGET_PC_MAC", settings.target_pc_mac).strip()
+    ip = os.getenv("TARGET_PC_IP", settings.target_pc_ip).strip()
+    user = os.getenv("TARGET_PC_USER", settings.target_pc_user).strip() or "Administrator"
+    port_str = os.getenv("TARGET_PC_PORT", "")
+    port = int(port_str) if port_str.isdigit() else settings.target_pc_port
+
     if action == "wake":
-        ok = send_magic_packet(TARGET_MAC)
+        ok = send_magic_packet(mac)
         if ok:
-            return {"status": "success", "message": f"已成功向目标 MAC `{TARGET_MAC}` 广播发送 WOL 唤醒魔包。"}
-        return {"status": "error", "message": f"无效的 MAC 地址: {TARGET_MAC}"}
+            return {"status": "success", "message": f"已成功向目标 MAC `{mac}` 广播发送 WOL 唤醒魔包。"}
+        return {"status": "error", "message": f"无效的 MAC 地址: {mac}"}
 
     elif action in ["sleep", "shutdown"]:
-        if not TARGET_IP:
+        if not ip:
             return {"status": "error", "message": "远程关机需要配置 TARGET_PC_IP"}
         
         # 针对 Windows PC 的轻量远程命令
@@ -68,8 +75,8 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
             "-o", "BatchMode=yes",
             "-o", "ConnectTimeout=5",
             "-o", "StrictHostKeyChecking=no",
-            "-p", str(TARGET_PORT),
-            f"{TARGET_USER}@{TARGET_IP}",
+            "-p", str(port),
+            f"{user}@{ip}",
             cmd_str
         ]
         try:

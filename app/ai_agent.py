@@ -23,12 +23,14 @@ try:
     from app.trace_tracker import TraceTracker
     from app.card_builder import clean_ai_content
     from app.calendar_helper import format_datetime_chinese
+    from app.config import settings
 except ImportError:
     from sanitizer import sanitize_text
     from mcp_client import MCPClient
     from trace_tracker import TraceTracker
     from card_builder import clean_ai_content
     from calendar_helper import format_datetime_chinese
+    from config import settings
 
 logger = logging.getLogger("butler.agent")
 
@@ -49,9 +51,9 @@ STATUS_MAP = {
 class AIAgent:
     def __init__(self, collector=None):
         self.collector = collector
-        self.api_key = os.getenv("OPENAI_API_KEY", "")
-        self.api_base = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1").rstrip("/")
-        self.model = os.getenv("OPENAI_MODEL") or os.getenv("AI_MODEL", "gpt-4o-mini")
+        self.api_key = settings.openai_api_key
+        self.api_base = settings.openai_api_base.rstrip("/")
+        self.model = settings.openai_model
         self.history = []
         self._lock = threading.Lock()
         

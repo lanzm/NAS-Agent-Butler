@@ -36,6 +36,14 @@ def get_str(key: str, default: str = "") -> str:
     return os.getenv(key, default).strip()
 
 
+def get_bool(key: str, default: bool = False) -> bool:
+    """安全解析布尔型环境变量"""
+    val_str = os.getenv(key, "").strip().lower()
+    if not val_str:
+        return default
+    return val_str in ("true", "1", "yes", "on")
+
+
 @dataclass
 class ButlerConfig:
     # 告警阈值配置 (百分比与度数)
@@ -59,6 +67,22 @@ class ButlerConfig:
     feishu_app_id: str = ""
     feishu_app_secret: str = ""
     feishu_receive_id: str = ""
+    feishu_receive_id_type: str = "open_id"
+
+    # 插件：防火墙配置
+    fail2ban_container_name: str = ""
+    fail2ban_jail: str = "caddy-services"
+
+    # 插件：Aria2 离线下载
+    aria2_rpc_url: str = ""
+    aria2_rpc_secret: str = ""
+
+    # 插件：PC 电源管理
+    enable_pc_power: bool = False
+    target_pc_mac: str = ""
+    target_pc_ip: str = ""
+    target_pc_user: str = "Administrator"
+    target_pc_port: int = 22
 
     @classmethod
     def load(cls) -> "ButlerConfig":
@@ -78,6 +102,16 @@ class ButlerConfig:
             feishu_app_id=get_str("FEISHU_APP_ID", ""),
             feishu_app_secret=get_str("FEISHU_APP_SECRET", ""),
             feishu_receive_id=get_str("FEISHU_RECEIVE_ID", ""),
+            feishu_receive_id_type=get_str("FEISHU_RECEIVE_ID_TYPE", "open_id") or "open_id",
+            fail2ban_container_name=get_str("FAIL2BAN_CONTAINER_NAME", ""),
+            fail2ban_jail=get_str("FAIL2BAN_JAIL", "caddy-services") or "caddy-services",
+            aria2_rpc_url=get_str("ARIA2_RPC_URL", ""),
+            aria2_rpc_secret=get_str("ARIA2_RPC_SECRET", ""),
+            enable_pc_power=get_bool("ENABLE_PC_POWER", False),
+            target_pc_mac=get_str("TARGET_PC_MAC", ""),
+            target_pc_ip=get_str("TARGET_PC_IP", ""),
+            target_pc_user=get_str("TARGET_PC_USER", "Administrator") or "Administrator",
+            target_pc_port=get_int("TARGET_PC_PORT", 22, min_val=1, max_val=65535),
         )
 
 

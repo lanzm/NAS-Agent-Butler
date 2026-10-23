@@ -17,11 +17,16 @@ except ImportError:
             return None
 from typing import Dict, Any
 
+try:
+    from app.config import settings
+except ImportError:
+    from config import settings
+
 def get_container_name() -> str:
-    return os.getenv("FAIL2BAN_CONTAINER_NAME", "").strip()
+    return os.getenv("FAIL2BAN_CONTAINER_NAME", settings.fail2ban_container_name).strip()
 
 def get_default_jail() -> str:
-    return os.getenv("FAIL2BAN_JAIL", "caddy-services").strip()
+    return os.getenv("FAIL2BAN_JAIL", settings.fail2ban_jail).strip()
 
 def is_enabled() -> bool:
     return bool(get_container_name())

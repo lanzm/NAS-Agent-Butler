@@ -39,6 +39,11 @@ from app.card_builder import (
 )
 from app.audio_transcriber import transcribe_audio_with_gemini
 
+try:
+    from app.config import settings
+except ImportError:
+    from config import settings
+
 logger = logging.getLogger("butler.feishu")
 
 
@@ -47,10 +52,10 @@ class FeishuChannel(BaseChannel):
 
     def __init__(self, action_handler: ActionHandler):
         self.action_handler = action_handler
-        self.app_id = os.getenv("FEISHU_APP_ID", "").strip()
-        self.app_secret = os.getenv("FEISHU_APP_SECRET", "").strip()
-        self.receive_id = os.getenv("FEISHU_RECEIVE_ID", "").strip()
-        self.receive_id_type = os.getenv("FEISHU_RECEIVE_ID_TYPE", "open_id").strip()
+        self.app_id = settings.feishu_app_id
+        self.app_secret = settings.feishu_app_secret
+        self.receive_id = settings.feishu_receive_id
+        self.receive_id_type = settings.feishu_receive_id_type
 
         self.api_client: Optional[lark.Client] = None
         self.ws_client: Optional[lark.ws.Client] = None
@@ -295,19 +300,22 @@ class FeishuChannel(BaseChannel):
                 logger.debug(f"状态更新跳过: {e}")
                 break
 
-    def _process_message_async(self, msg_id: str, raw_text: str, image_url: Optional[str] = None):
-        """异步处理文本/图片指令"""
+    def _run_with_loading_lifecycle(self, msg_id: str, initial_status: str, task_fn):
+        """统一管理飞书状态交互卡片生命周期：占位动画、状态流转、结果 Patch 更新与异常兜底"""
         anim_stop_event = threading.Event()
         anim_poke_event = threading.Event()
         anim_thread = None
         placeholder_msg_id = ""
-        status_holder = ["分析图片中" if image_url else "思考中"]
+        status_holder = [initial_status]
 
         def on_status_change(new_status: str):
             if new_status and status_holder:
                 if status_holder[0] != new_status:
                     status_holder[0] = new_status
                     anim_poke_event.set()
+
+        def set_status(new_status: str):
+            on_status_change(new_status)
 
         try:
             initial_loading_card = build_loading_card(stage_text=status_holder[0])
@@ -321,40 +329,48 @@ class FeishuChannel(BaseChannel):
                 )
                 anim_thread.start()
 
-            res_type, res_data = self.action_handler.handle_text_command(
-                raw_text,
-                image_url=image_url,
-                status_callback=on_status_change
-            )
+            card_to_show = task_fn(on_status_change, set_status)
 
             anim_stop_event.set()
             anim_poke_event.set()
             if anim_thread:
                 anim_thread.join(timeout=0.6)
 
-            if res_type == "CARD":
+            if card_to_show:
                 updated = False
                 if placeholder_msg_id:
-                    updated = self.patch_card(placeholder_msg_id, res_data)
+                    updated = self.patch_card(placeholder_msg_id, card_to_show)
                 if not updated:
-                    self.reply_card(msg_id, res_data)
-            else:
-                fallback_card = build_message_card("🤖 NAS 智能管家", str(res_data))
-                updated = False
-                if placeholder_msg_id:
-                    updated = self.patch_card(placeholder_msg_id, fallback_card)
-                if not updated:
-                    self.reply_card(msg_id, fallback_card)
+                    self.reply_card(msg_id, card_to_show)
 
         except Exception as e:
             anim_stop_event.set()
-            logger.error(f"异步处理用户消息异常: {e}")
+            anim_poke_event.set()
+            if anim_thread:
+                anim_thread.join(timeout=0.6)
+            logger.error(f"处理交互消息异常: {e}")
             err_card = build_message_card("❌ 处理异常", f"处理消息时发生异常: {str(e)}", template="red")
             if placeholder_msg_id:
                 if not self.patch_card(placeholder_msg_id, err_card):
                     self.reply_card(msg_id, err_card)
             else:
                 self.reply_card(msg_id, err_card)
+
+    def _process_message_async(self, msg_id: str, raw_text: str, image_url: Optional[str] = None):
+        """异步处理文本/图片指令"""
+        initial_status = "分析图片中" if image_url else "思考中"
+
+        def _handle(on_status_change, set_status):
+            res_type, res_data = self.action_handler.handle_text_command(
+                raw_text,
+                image_url=image_url,
+                status_callback=on_status_change
+            )
+            if res_type == "CARD":
+                return res_data
+            return build_message_card("🤖 NAS 智能管家", str(res_data))
+
+        self._run_with_loading_lifecycle(msg_id, initial_status, _handle)
 
     def _process_image_message_async(self, msg_id: str, image_key: str, user_text: str = ""):
         """异步处理图片消息"""
@@ -368,76 +384,25 @@ class FeishuChannel(BaseChannel):
 
     def _process_audio_message_async(self, msg_id: str, file_key: str):
         """异步处理语音留言"""
-        anim_stop_event = threading.Event()
-        anim_poke_event = threading.Event()
-        anim_thread = None
-        placeholder_msg_id = ""
-        status_holder = ["正在收听语音"]
-
-        def on_status_change(new_status: str):
-            if new_status and status_holder:
-                if status_holder[0] != new_status:
-                    status_holder[0] = new_status
-                    anim_poke_event.set()
-
-        try:
-            initial_loading_card = build_loading_card(stage_text=status_holder[0])
-            placeholder_msg_id = self.reply_card(msg_id, initial_loading_card)
-
-            if placeholder_msg_id:
-                anim_thread = threading.Thread(
-                    target=self._animate_loading,
-                    args=(placeholder_msg_id, anim_stop_event, status_holder, anim_poke_event),
-                    daemon=True
-                )
-                anim_thread.start()
-
+        def _handle(on_status_change, set_status):
             audio_bytes, dl_err = self.download_file_bytes(msg_id, file_key, resource_type="file")
             if not audio_bytes:
-                anim_stop_event.set()
-                anim_poke_event.set()
-                if anim_thread:
-                    anim_thread.join(timeout=0.6)
-                err_card = build_message_card("🎤 语音读取受限", dl_err or "未能获取音频内容，请重试。", template="orange")
-                if placeholder_msg_id:
-                    if not self.patch_card(placeholder_msg_id, err_card):
-                        self.reply_card(msg_id, err_card)
-                else:
-                    self.reply_card(msg_id, err_card)
-                return
+                return build_message_card("🎤 语音读取受限", dl_err or "未能获取音频内容，请重试。", template="orange")
 
-            status_holder[0] = "识别语音中"
-            anim_poke_event.set()
-
+            set_status("识别语音中")
             transcribed_text, asr_err = transcribe_audio_with_gemini(audio_bytes)
             if not transcribed_text or transcribed_text == "[未能清晰识别语音]":
-                anim_stop_event.set()
-                anim_poke_event.set()
-                if anim_thread:
-                    anim_thread.join(timeout=0.6)
                 card_title = "🎤 语音识别接口异常" if asr_err else "🎤 语音未能识别"
                 card_content = asr_err or "未能清晰识别到有效语音内容，请靠近麦克风或打字输入。"
-                err_card = build_message_card(card_title, card_content, template="orange")
-                if placeholder_msg_id:
-                    if not self.patch_card(placeholder_msg_id, err_card):
-                        self.reply_card(msg_id, err_card)
-                else:
-                    self.reply_card(msg_id, err_card)
-                return
+                return build_message_card(card_title, card_content, template="orange")
 
             logger.info(f"语音识别结果: '{transcribed_text}'")
-            status_holder[0] = "思考中"
-            anim_poke_event.set()
+            set_status("思考中")
 
             res_type, res_data = self.action_handler.handle_text_command(
                 transcribed_text,
                 status_callback=on_status_change
             )
-
-            anim_stop_event.set()
-            anim_poke_event.set()
-            if anim_thread:
-                anim_thread.join(timeout=0.6)
 
             voice_prefix = format_feishu_markdown(f"🎤 *听取语音：“{transcribed_text}”*") + "\n\n"
             if res_type == "CARD":
@@ -447,29 +412,12 @@ class FeishuChannel(BaseChannel):
                         elements[0]["content"] = voice_prefix + elements[0]["content"].lstrip("\n")
                 except Exception:
                     pass
-                updated = False
-                if placeholder_msg_id:
-                    updated = self.patch_card(placeholder_msg_id, res_data)
-                if not updated:
-                    self.reply_card(msg_id, res_data)
+                return res_data
             else:
                 final_content = voice_prefix + str(res_data).lstrip("\n")
-                fallback_card = build_message_card("🤖 NAS 家庭智能管家", final_content)
-                updated = False
-                if placeholder_msg_id:
-                    updated = self.patch_card(placeholder_msg_id, fallback_card)
-                if not updated:
-                    self.reply_card(msg_id, fallback_card)
+                return build_message_card("🤖 NAS 家庭智能管家", final_content)
 
-        except Exception as e:
-            anim_stop_event.set()
-            logger.error(f"处理语音消息异常: {e}")
-            err_card = build_message_card("❌ 处理异常", f"处理语音消息时发生异常: {str(e)}", template="red")
-            if placeholder_msg_id:
-                if not self.patch_card(placeholder_msg_id, err_card):
-                    self.reply_card(msg_id, err_card)
-            else:
-                self.reply_card(msg_id, err_card)
+        self._run_with_loading_lifecycle(msg_id, "正在收听语音", _handle)
 
     def _extract_post_content(self, content_dict: dict) -> Tuple[str, str]:
         """从富文本消息中提取文本与首张图片"""

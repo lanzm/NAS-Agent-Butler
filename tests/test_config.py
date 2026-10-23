@@ -32,19 +32,37 @@ class TestConfig(unittest.TestCase):
             val = get_str("TEST_STR_VAL", default="")
             self.assertEqual(val, "hello world")
 
+    def test_get_bool(self):
+        """测试布尔型环境变量读取与解析"""
+        from app.config import get_bool
+        with patch.dict(os.environ, {"TEST_BOOL": "true"}):
+            self.assertTrue(get_bool("TEST_BOOL", False))
+        with patch.dict(os.environ, {"TEST_BOOL": "1"}):
+            self.assertTrue(get_bool("TEST_BOOL", False))
+        with patch.dict(os.environ, {"TEST_BOOL": "false"}):
+            self.assertFalse(get_bool("TEST_BOOL", True))
+        with patch.dict(os.environ, {"TEST_BOOL": ""}):
+            self.assertTrue(get_bool("TEST_BOOL", True))
+
     def test_butler_config_load_and_override(self):
         """测试 ButlerConfig 加载与环境覆盖"""
         with patch.dict(os.environ, {
             "CPU_THRESHOLD": "92",
             "DISK_THRESHOLD": "98",
             "DEFAULT_CITY": "上海",
-            "ALARM_COOLDOWN": "1800"
+            "ALARM_COOLDOWN": "1800",
+            "FAIL2BAN_CONTAINER_NAME": "guard",
+            "ENABLE_PC_POWER": "true",
+            "TARGET_PC_MAC": "AA:BB:CC:DD:EE:FF"
         }):
             cfg = ButlerConfig.load()
             self.assertEqual(cfg.cpu_threshold, 92)
             self.assertEqual(cfg.disk_threshold, 98)
             self.assertEqual(cfg.default_city, "上海")
             self.assertEqual(cfg.alarm_cooldown, 1800)
+            self.assertEqual(cfg.fail2ban_container_name, "guard")
+            self.assertTrue(cfg.enable_pc_power)
+            self.assertEqual(cfg.target_pc_mac, "AA:BB:CC:DD:EE:FF")
 
 
 if __name__ == "__main__":
