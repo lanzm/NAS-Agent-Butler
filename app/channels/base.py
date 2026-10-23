@@ -64,3 +64,12 @@ class BaseChannel(ABC):
         :return: 是否发送成功
         """
         pass
+
+    def send_file(self, target_id: Optional[str], file_path: str, **kwargs) -> bool:
+        """
+        向指定目标发送文件/图片（可选实现，默认不支持）
+        :param target_id: 接收方用户 ID
+        :param file_path: 本地文件路径
+        :return: 是否发送成功
+        """
+        return False

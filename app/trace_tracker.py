@@ -21,9 +21,9 @@ class TraceTracker:
         self.tool_execution_duration: float = 0.0
         self.second_thought_duration: float = 0.0
         
-        # 工具执行详情记录: [{"name": str, "duration": float, "status": "ok"|"error"}]
+        self._raw_tool_duration: float = 0.0
         self.tool_calls: List[Dict[str, Any]] = []
-        
+
         # Token 消耗统计 (若 API 返回)
         self.prompt_tokens: int = 0
         self.completion_tokens: int = 0
@@ -33,13 +33,14 @@ class TraceTracker:
         self.first_thought_duration = round(duration, 2)
 
     def record_tool_call(self, name: str, duration: float, status: str = "ok"):
-        d = round(duration, 2)
-        self.tool_execution_duration = round(self.tool_execution_duration + duration, 2)
-        self.tool_calls.append({
-            "name": name,
-            "duration": d,
-            "status": status
-        })
+        self._raw_tool_duration += duration
+        self.tool_execution_duration = round(self._raw_tool_duration, 2)
+        if len(self.tool_calls) < 50:
+            self.tool_calls.append({
+                "name": name,
+                "duration": round(duration, 2),
+                "status": status
+            })
 
     def mark_second_thought(self, duration: float):
         self.second_thought_duration = round(duration, 2)

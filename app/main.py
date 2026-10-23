@@ -16,6 +16,7 @@ import time
 import logging
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from typing import Optional, Dict, Any, List
 from dotenv import load_dotenv
 
 try:
@@ -41,13 +42,18 @@ logger = logging.getLogger("butler")
 
 load_dotenv()
 
-# --- 配置参数 ---
-DISK_THRESHOLD = int(os.getenv("DISK_THRESHOLD", "95"))
-CPU_THRESHOLD = int(os.getenv("CPU_THRESHOLD", "85"))
-MEM_THRESHOLD = int(os.getenv("MEM_THRESHOLD", "90"))
-CPU_TEMP_THRESHOLD = int(os.getenv("CPU_TEMP_THRESHOLD", "80"))
-DAILY_REPORT_TIME = os.getenv("DAILY_REPORT_TIME", "08:00").strip()
-ALARM_COOLDOWN = int(os.getenv("ALARM_COOLDOWN", "3600"))
+try:
+    from app.config import settings
+except ImportError:
+    from config import settings
+
+# --- 类型安全的系统配置 ---
+DISK_THRESHOLD = settings.disk_threshold
+CPU_THRESHOLD = settings.cpu_threshold
+MEM_THRESHOLD = settings.mem_threshold
+CPU_TEMP_THRESHOLD = settings.temp_threshold
+DAILY_REPORT_TIME = settings.daily_report_time
+ALARM_COOLDOWN = settings.alarm_cooldown
 
 # --- 核心实例初始化 ---
 collector = SystemCollector(
@@ -237,9 +243,9 @@ def run_scheduler_loop():
                 logger.error(f"任务 [{task_name}] 的 interval_minutes 配置无效: {interval_min}")
 
     logger.info(f"定时调度引擎已就绪: 共激活 {active_count} 个调度任务")
-    while True:
+    while not _shutdown_event.is_set():
         schedule.run_pending()
-        time.sleep(10)
+        _shutdown_event.wait(10)
 
 
 class InternalNotifyHandler(BaseHTTPRequestHandler):
@@ -277,6 +283,11 @@ class InternalNotifyHandler(BaseHTTPRequestHandler):
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()
                 self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+        elif self.path == "/health":
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(b'{"status":"healthy"}')
         else:
             self.send_response(404)
             self.end_headers()
@@ -285,18 +296,60 @@ class InternalNotifyHandler(BaseHTTPRequestHandler):
         pass
 
 
+_shutdown_event = threading.Event()
+_webhook_server: Optional[HTTPServer] = None
+
+
 def run_internal_webhook_server():
     """启动仅监听 127.0.0.1:8999 的本地微型 HTTP 服务"""
+    global _webhook_server
     try:
-        server = HTTPServer(('127.0.0.1', 8999), InternalNotifyHandler)
+        _webhook_server = HTTPServer(('127.0.0.1', 8999), InternalNotifyHandler)
         logger.info("内部通知 Webhook 服务已启动 -> http://127.0.0.1:8999/notify")
-        server.serve_forever()
+        _webhook_server.serve_forever()
     except Exception as e:
-        logger.error(f"启动内部通知 Webhook 失败: {e}")
+        if not _shutdown_event.is_set():
+            logger.error(f"启动内部通知 Webhook 失败: {e}")
+
+
+def graceful_shutdown(signum=None, frame=None):
+    """优雅安全停机：释放所有子进程、关闭 HTTP 服务、断开 WebSocket 长连接"""
+    logger.info("收到停机信号，执行优雅安全退出...")
+    _shutdown_event.set()
+
+    # 1. 停止通道
+    try:
+        channel_manager.stop_all()
+    except Exception as e:
+        logger.error(f"关闭通道服务异常: {e}")
+
+    # 2. 关闭内部 Webhook 服务
+    global _webhook_server
+    if _webhook_server:
+        try:
+            _webhook_server.shutdown()
+        except Exception as e:
+            logger.error(f"关闭 Webhook 服务异常: {e}")
+
+    # 3. 关闭 MCP Client 子进程
+    try:
+        if hasattr(action_handler, "agent") and hasattr(action_handler.agent, "mcp_client"):
+            action_handler.agent.mcp_client.stop()
+    except Exception as e:
+        logger.error(f"关闭 MCP Client 异常: {e}")
+
+    logger.info("所有服务已安全终止，进程退出。")
 
 
 def main():
     logger.info("=== NAS 多平台智能运维管家正在启动 ===")
+
+    try:
+        import signal
+        signal.signal(signal.SIGTERM, graceful_shutdown)
+        signal.signal(signal.SIGINT, graceful_shutdown)
+    except Exception:
+        pass
 
     # 1. 启动后台定时任务
     scheduler_thread = threading.Thread(target=run_scheduler_loop, daemon=True, name="SchedulerThread")
@@ -311,11 +364,10 @@ def main():
 
     # 4. 守护主线程常驻
     try:
-        while True:
-            time.sleep(3600)
+        while not _shutdown_event.is_set():
+            _shutdown_event.wait(3600)
     except (KeyboardInterrupt, SystemExit):
-        logger.info("收到退出信号，正在安全停止所有服务...")
-        channel_manager.stop_all()
+        graceful_shutdown()
 
 
 if __name__ == "__main__":

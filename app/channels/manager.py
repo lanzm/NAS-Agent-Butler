@@ -4,6 +4,7 @@ manager.py - 多 IM 通道统一管理器 (ChannelManager)
 负责动态发现、按需激活多通道、生命周期治理以及跨平台统一广播消息与晨报。
 """
 
+import threading
 import logging
 from typing import Dict, List, Optional, Any
 from app.channels.base import BaseChannel
@@ -31,7 +32,7 @@ class ChannelManager:
         return [c for c in self._channels.values() if c.is_enabled()]
 
     def start_all(self):
-        """启动所有已启用的通道"""
+        """启动所有已启用的通道（异步线程隔离，彻底防范个别通道阻塞主事件循环）"""
         active = self.get_active_channels()
         if not active:
             logger.warning("未检测到任何已启用的 IM 通道，请检查 .env 配置凭据")
@@ -40,7 +41,8 @@ class ChannelManager:
         for ch in active:
             try:
                 logger.info(f"正在启动通道服务: [{ch.display_name}]...")
-                ch.start()
+                t = threading.Thread(target=ch.start, daemon=True, name=f"ChannelStart-{ch.name}")
+                t.start()
             except Exception as e:
                 logger.error(f"启动通道 [{ch.display_name}] 异常: {e}")
 
