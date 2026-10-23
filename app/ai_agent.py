@@ -61,6 +61,16 @@ class AIAgent:
     def is_configured(self) -> bool:
         return bool(self.api_key and self.api_base)
 
+    def _trim_history(self, max_messages: int = 10, max_chars: int = 8000):
+        """智能截断多轮对话历史：兼顾轮次上限与字符预算，防止 Context 溢出与内存膨胀"""
+        if len(self.history) > max_messages:
+            self.history = self.history[-max_messages:]
+
+        total_chars = sum(len(str(m.get("content", ""))) for m in self.history)
+        while total_chars > max_chars and len(self.history) > 2:
+            removed = self.history.pop(0)
+            total_chars -= len(str(removed.get("content", "")))
+
     def _call_model(self, url: str, headers: dict, payload: dict, retries: int = 4) -> tuple:
         """发起大模型标准非流式请求。返回: (message_dict, usage_dict, error_msg)"""
         req_payload = dict(payload)
@@ -150,7 +160,7 @@ class AIAgent:
             # 2. 动态从 MCP 获取转换后的 OpenAI 格式工具列表
             available_tools = self.mcp_client.get_openai_tools()
 
-            # 3. 维护对话历史上下文 (最近 6 条，支持图片多模态组装)
+            # 3. 维护对话历史上下文 (智能滑动窗口与字符预算截断，支持图片多模态组装)
             if image_url:
                 text_prompt = user_prompt if user_prompt else "请详细分析识别这张图片的内容，并给出专业分析与针对性结论。"
                 current_user_content = [
@@ -159,13 +169,11 @@ class AIAgent:
                 ]
                 # 历史记录仅存储文字摘要，避免多轮对话重复发送大体积 Base64 图片导致超限
                 self.history.append({"role": "user", "content": f"[图片] {text_prompt}"})
-                if len(self.history) > 6:
-                    self.history = self.history[-6:]
+                self._trim_history()
                 messages = [{"role": "system", "content": system_content}] + list(self.history[:-1]) + [{"role": "user", "content": current_user_content}]
             else:
                 self.history.append({"role": "user", "content": user_prompt})
-                if len(self.history) > 6:
-                    self.history = self.history[-6:]
+                self._trim_history()
                 messages = [{"role": "system", "content": system_content}] + list(self.history)
 
             url = f"{self.api_base}/chat/completions"
@@ -284,6 +292,7 @@ class AIAgent:
                 reply_content = clean_ai_content(final_message.get("content"))
                 if reply_content:
                     self.history.append({"role": "assistant", "content": reply_content})
+                    self._trim_history()
                     trace.log_trace_summary()
                     return {"text": reply_content, "trace_tag": trace.get_summary_tag(), "trace_id": trace.trace_id}
 
@@ -295,5 +304,6 @@ class AIAgent:
             else:
                 fallback_msg = "❌ 连接 AI 服务异常，未收到有效回复。"
             self.history.append({"role": "assistant", "content": fallback_msg})
+            self._trim_history()
             trace.log_trace_summary()
             return {"text": fallback_msg, "trace_tag": trace.get_summary_tag(), "trace_id": trace.trace_id}

@@ -427,27 +427,34 @@ def execute_search_web_info(args: Dict[str, Any]) -> Dict[str, Any]:
         from html import unescape
 
         url = f"https://cn.bing.com/search?q={quote_plus(query)}"
-        req = Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+        req = Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"})
         with urlopen(req, timeout=5) as response:
             html = response.read().decode("utf-8", errors="replace")
 
-        # 匹配 li class 含 b_algo 并提取标题与 URL
+        # 匹配 li class 含 b_algo 并提取标题、URL及摘要 snippet
         items = []
-        for m in re.finditer(r'<li class="b_algo"[^>]*>.*?<h2><a[^>]+href="([^"]+)"[^>]*>(.*?)</a></h2>', html, re.DOTALL):
+        for m in re.finditer(r'<li class="b_algo"[^>]*>.*?<h2><a[^>]+href="([^"]+)"[^>]*>(.*?)</a></h2>(?:.*?<div class="b_caption"><p>(.*?)</p>)?', html, re.DOTALL):
             u = m.group(1)
             t = unescape(re.sub(r'<.*?>', '', m.group(2))).strip()
+            snippet_raw = m.group(3) or ""
+            snippet = unescape(re.sub(r'<.*?>', '', snippet_raw)).strip()
             if u.startswith("http"):
-                items.append((u, t))
-            if len(items) >= 2:
+                items.append((u, t, snippet))
+            if len(items) >= 3:
                 break
 
         if not items:
             return {"status": "success", "query": query, "markdown_result": "未检索到相关实时事实内容。"}
 
         fact_sections = []
-        for idx, (page_url, page_title) in enumerate(items, 1):
+        for idx, (page_url, page_title, page_snippet) in enumerate(items, 1):
             body_text = extract_clean_article_text(page_url, timeout=2.5)
-            content = body_text if len(body_text) >= 60 else f"（标题）{page_title}"
+            if len(body_text) >= 60:
+                content = body_text
+            elif page_snippet:
+                content = f"（摘要）{page_snippet}"
+            else:
+                content = f"（标题）{page_title}"
             fact_sections.append(f"【参考事实 {idx}：{page_title}】\n{content}")
 
         joined_facts = "\n\n".join(fact_sections)
@@ -547,6 +554,34 @@ def execute_generate_daily_report() -> Dict[str, Any]:
 # ==============================================================================
 # 5. JSON-RPC 2.0 协议中继主循环 (stdio 管道)
 # ==============================================================================
+
+def _exec_get_container_logs(tool_args: Dict[str, Any]) -> Dict[str, Any]:
+    c_name = tool_args.get("container_name")
+    t_lines = int(tool_args.get("tail_lines", 30))
+    return execute_manage_docker_container({"action": "logs", "container_name": c_name, "tail_lines": t_lines})
+
+
+def _exec_get_weather_calendar(tool_args: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        from app.weather_calendar_helper import get_weather_calendar_summary
+    except ImportError:
+        from weather_calendar_helper import get_weather_calendar_summary
+    city_arg = tool_args.get("city")
+    return get_weather_calendar_summary(city_arg)
+
+
+TOOL_DISPATCH_TABLE = {
+    "generate_daily_report": lambda args: execute_generate_daily_report(),
+    "get_system_health": lambda args: execute_get_system_health(),
+    "manage_docker_container": execute_manage_docker_container,
+    "get_container_logs": _exec_get_container_logs,
+    "get_weather_calendar": _exec_get_weather_calendar,
+    "manage_aria2_download": execute_manage_aria2_download,
+    "manage_firewall_security": execute_manage_firewall_security,
+    "search_web_info": execute_search_web_info,
+    "manage_pc_power": execute_manage_pc_power,
+}
+
 
 def handle_request(req: Dict[str, Any]) -> Dict[str, Any]:
     method = req.get("method")
@@ -650,40 +685,21 @@ def handle_request(req: Dict[str, Any]) -> Dict[str, Any]:
         tool_name = params.get("name")
         tool_args = params.get("arguments") or {}
         logger.info(f"收到工具调用请求: {tool_name}({tool_args})")
-        
-        start_t = time.time()
-        res_data = {}
-        if tool_name == "generate_daily_report":
-            res_data = execute_generate_daily_report()
-        elif tool_name == "get_system_health":
-            res_data = execute_get_system_health()
-        elif tool_name == "manage_docker_container":
-            res_data = execute_manage_docker_container(tool_args)
-        elif tool_name == "get_container_logs":
-            c_name = tool_args.get("container_name")
-            t_lines = int(tool_args.get("tail_lines", 30))
-            res_data = execute_manage_docker_container({"action": "logs", "container_name": c_name, "tail_lines": t_lines})
-        elif tool_name == "get_weather_calendar":
-            try:
-                from app.weather_calendar_helper import get_weather_calendar_summary
-            except ImportError:
-                from weather_calendar_helper import get_weather_calendar_summary
-            city_arg = tool_args.get("city")
-            res_data = get_weather_calendar_summary(city_arg)
-        elif tool_name == "manage_aria2_download":
-            res_data = execute_manage_aria2_download(tool_args)
-        elif tool_name == "manage_firewall_security":
-            res_data = execute_manage_firewall_security(tool_args)
-        elif tool_name == "search_web_info":
-            res_data = execute_search_web_info(tool_args)
-        elif tool_name == "manage_pc_power":
-            res_data = execute_manage_pc_power(tool_args)
-        else:
+
+        executor = TOOL_DISPATCH_TABLE.get(tool_name)
+        if not executor:
             return {
                 "jsonrpc": "2.0",
                 "id": req_id,
                 "error": {"code": -32601, "message": f"未知工具: {tool_name}"}
             }
+
+        start_t = time.time()
+        try:
+            res_data = executor(tool_args)
+        except Exception as e:
+            logger.error(f"执行工具 {tool_name} 异常: {e}")
+            res_data = {"status": "error", "message": f"工具执行异常: {str(e)}"}
 
         elapsed = time.time() - start_t
         logger.info(f"工具 {tool_name} 执行完毕，耗时 {elapsed:.2f}s")
