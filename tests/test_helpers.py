@@ -29,6 +29,13 @@ class TestWeatherCalendarHelper(unittest.TestCase):
         self.assertIn("formatted_calendar", cal)
         self.assertIn("countdown_summary", cal)
 
+    def test_calendar_info_accuracy(self):
+        # 2026年春节: 2026-02-17
+        cal = get_calendar_info(datetime.date(2026, 2, 17))
+        self.assertIn("丙午(马)年", cal["lunar_date"])
+        self.assertIn("正月", cal["lunar_date"])
+        self.assertIn("初一", cal["lunar_date"])
+
 
 class TestCalendarHelper(unittest.TestCase):
     """测试核心阴历/阳历算法"""

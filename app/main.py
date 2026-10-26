@@ -340,8 +340,8 @@ def graceful_shutdown(signum=None, frame=None):
 
     # 3. 关闭 MCP Client 子进程
     try:
-        if hasattr(action_handler, "agent") and hasattr(action_handler.agent, "mcp_client"):
-            action_handler.agent.mcp_client.stop()
+        if hasattr(action_handler, "agent") and hasattr(action_handler.agent, "stop"):
+            action_handler.agent.stop()
     except Exception as e:
         logger.error(f"关闭 MCP Client 异常: {e}")
 

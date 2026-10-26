@@ -19,6 +19,7 @@ from typing import Dict, Any
 logger = logging.getLogger("butler.weather")
 
 from app.calendar_helper import GAN, ZHI, SHENGXIAO, MONTH_CN, DAY_CN, SOLAR_TERMS_C, get_lunar_date
+from app.config import settings
 
 WEATHER_ZH_MAP = {
     "sunny": "晴朗",
@@ -131,8 +132,9 @@ def get_calendar_info(dt: datetime.date = None) -> Dict[str, Any]:
     try:
         from lunardate import LunarDate
         ld = LunarDate.from_solar_date(dt.year, dt.month, dt.day)
+        gz_year = f"{GAN[(ld.year - 4) % 10]}{ZHI[(ld.year - 4) % 12]}"
         sx = SHENGXIAO[(ld.year - 4) % 12]
-        is_leap = getattr(ld, "is_leap_month", getattr(ld, "isLeapMonth", False))
+        is_leap = getattr(ld, "is_leap_month", False)
         m_name = f"闰{MONTH_CN[ld.month-1]}" if is_leap else MONTH_CN[ld.month-1]
         d_name = DAY_CN[ld.day - 1] if 1 <= ld.day <= len(DAY_CN) else f"{ld.day}日"
         lunar_str = f"{gz_year}({sx})年 {m_name}月{d_name}"
@@ -191,7 +193,7 @@ def get_calendar_info(dt: datetime.date = None) -> Dict[str, Any]:
 
 def get_wttr_weather(city: str = None) -> Dict[str, Any]:
     """调用 wttr.in 免 Key API 获取实时天气与今日预报"""
-    default_city = os.getenv("DEFAULT_CITY", "北京").strip() or "北京"
+    default_city = os.getenv("DEFAULT_CITY", settings.default_city).strip() or "北京"
     raw_city = (city or default_city).strip()
     
     # 防注入与 SSRF：严格净化城市参数，仅允许汉字、英文字母、数字和横杠空格，最长 30 字符

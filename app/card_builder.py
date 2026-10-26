@@ -219,12 +219,18 @@ def build_status_card(data: dict, trace_tag: Optional[str] = None) -> dict:
         
     # 4. Docker 容器状态
     containers = data.get("containers", [])
-    if containers:
-        total_c = len(containers)
-        running_c = sum(1 for c in containers if c.get("status") == "running")
+    valid_containers = [c for c in containers if c.get("status") not in ("missing_lib", "error") and "Docker" not in c.get("name", "")]
+    if valid_containers:
+        total_c = len(valid_containers)
+        running_c = sum(1 for c in valid_containers if c.get("status") == "running")
         elements.append({
             "tag": "markdown",
             "content": f"{get_i18n('container_title')}：" + get_i18n("container_summary").format(total=total_c, running=running_c)
+        })
+    elif any(c.get("status") in ("missing_lib", "error") for c in containers):
+        elements.append({
+            "tag": "markdown",
+            "content": f"{get_i18n('container_title')}：⚠️ Docker 守护进程未就绪或无法连接"
         })
         
     # 5. 底部元数据

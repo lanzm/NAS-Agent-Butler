@@ -17,19 +17,23 @@ class ChannelManager:
 
     def __init__(self):
         self._channels: Dict[str, BaseChannel] = {}
+        self._lock = threading.RLock()
 
     def register(self, channel: BaseChannel):
         """注册一个通道实例"""
-        self._channels[channel.name] = channel
+        with self._lock:
+            self._channels[channel.name] = channel
         logger.info(f"已注册 IM 通道: [{channel.display_name}] (enabled={channel.is_enabled()})")
 
     def get_channel(self, name: str) -> Optional[BaseChannel]:
         """获取指定名称的通道实例"""
-        return self._channels.get(name)
+        with self._lock:
+            return self._channels.get(name)
 
     def get_active_channels(self) -> List[BaseChannel]:
         """获取当前配置有效且已启用的所有通道"""
-        return [c for c in self._channels.values() if c.is_enabled()]
+        with self._lock:
+            return [c for c in self._channels.values() if c.is_enabled()]
 
     def start_all(self):
         """启动所有已启用的通道（异步线程隔离，彻底防范个别通道阻塞主事件循环）"""

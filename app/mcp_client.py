@@ -100,6 +100,8 @@ class MCPClient:
                         self.process.stdin.close()
                     if self.process.stdout:
                         self.process.stdout.close()
+                    if self.process.stderr:
+                        self.process.stderr.close()
                 except Exception:
                     pass
 
@@ -110,6 +112,12 @@ class MCPClient:
                     except Exception:
                         self.process.kill()
             self.process = None
+
+    def __del__(self):
+        try:
+            self.stop()
+        except Exception:
+            pass
 
     def _next_id(self) -> int:
         with self._lock:

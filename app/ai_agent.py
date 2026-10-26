@@ -48,11 +48,39 @@ class AIAgent:
         self.model = settings.openai_model
         self.history = []
         self._lock = threading.Lock()
-        
-        # 初始化并启动标准 MCP Client
-        logger.info("正在初始化 MCPClient 并拉起本地 nas_mcp_server...")
-        self.mcp_client = MCPClient()
-        self.mcp_client.start()
+        self._mcp_client: Optional[MCPClient] = None
+
+    @property
+    def mcp_client(self) -> MCPClient:
+        """按需懒加载并启动标准 MCP Client（避免模块加载时抢占拉起子进程）"""
+        if self._mcp_client is None:
+            with self._lock:
+                if self._mcp_client is None:
+                    logger.info("正在初始化 MCPClient 并拉起本地 nas_mcp_server...")
+                    client = MCPClient()
+                    client.start()
+                    self._mcp_client = client
+        return self._mcp_client
+
+    @mcp_client.setter
+    def mcp_client(self, client: Optional[MCPClient]):
+        self._mcp_client = client
+
+    def stop(self):
+        """安全停止并回收 MCP Client 子进程"""
+        with self._lock:
+            if self._mcp_client is not None:
+                try:
+                    self._mcp_client.stop()
+                except Exception:
+                    pass
+                self._mcp_client = None
+
+    def __del__(self):
+        try:
+            self.stop()
+        except Exception:
+            pass
 
     def is_configured(self) -> bool:
         return bool(self.api_key and self.api_base)
