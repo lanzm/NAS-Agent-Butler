@@ -122,6 +122,7 @@ class AIAgent:
                             if req_payload.get("model") != fallback_m:
                                 logger.info(f"平滑切换至备选模型: {fallback_m}")
                                 req_payload["model"] = fallback_m
+                                self.model = fallback_m
                                 break
                         time.sleep(1.0)
                         continue

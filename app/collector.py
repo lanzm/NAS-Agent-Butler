@@ -257,10 +257,10 @@ class SystemCollector:
 
         # 1. CPU
         try:
-            cpu_usage = int(psutil.cpu_percent(interval=0.5))
+            cpu_usage = int(psutil.cpu_percent(interval=0.1))
             if cpu_usage > cpu_th:
-                time.sleep(1)
-                cpu_usage = int(psutil.cpu_percent(interval=0.5))
+                time.sleep(0.5)
+                cpu_usage = int(psutil.cpu_percent(interval=0.2))
                 if cpu_usage > cpu_th:
                     alarms.append(f"CPU 使用率持续偏高: {cpu_usage}% (阈值 {cpu_th}%)")
         except Exception:

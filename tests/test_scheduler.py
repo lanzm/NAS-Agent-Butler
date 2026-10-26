@@ -36,6 +36,14 @@ class TestScheduler(unittest.TestCase):
         self.assertIn("thresholds", health_task)
         self.assertEqual(health_task["thresholds"].get("cpu"), 85)
 
+    def test_load_scheduled_tasks_with_custom_daily_report_time(self):
+        """测试用户配置自定义 DAILY_REPORT_TIME 时动态覆盖晨报时间"""
+        with patch("app.main.DAILY_REPORT_TIME", "07:30"):
+            tasks = load_scheduled_tasks()
+            daily_task = next((t for t in tasks if "晨报" in t.get("name", "")), None)
+            self.assertIsNotNone(daily_task)
+            self.assertEqual(daily_task.get("time"), "07:30")
+
     @patch("app.main.channel_manager.broadcast_card")
     @patch("app.main.collector.collect")
     def test_health_check_lifecycle_alarm_and_recovery(self, mock_collect, mock_broadcast):

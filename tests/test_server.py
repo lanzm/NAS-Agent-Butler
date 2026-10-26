@@ -25,6 +25,16 @@ class TestInternalWebhookServer(unittest.TestCase):
         handler.send_response.assert_called_with(200)
         self.assertIn(b"healthy", handler.wfile.getvalue())
 
+    def test_health_check_head(self):
+        handler = InternalNotifyHandler.__new__(InternalNotifyHandler)
+        handler.path = "/health"
+        handler.send_response = MagicMock()
+        handler.send_header = MagicMock()
+        handler.end_headers = MagicMock()
+
+        handler.do_HEAD()
+        handler.send_response.assert_called_with(200)
+
     def test_not_found_get(self):
         handler = InternalNotifyHandler.__new__(InternalNotifyHandler)
         handler.path = "/unknown_path"

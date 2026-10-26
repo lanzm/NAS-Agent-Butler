@@ -431,8 +431,10 @@ def execute_search_web_info(args: Dict[str, Any]) -> Dict[str, Any]:
         if not items:
             return {"status": "success", "query": query, "markdown_result": "未检索到相关实时事实内容。"}
 
-        fact_sections = []
-        for idx, (page_url, page_title, page_snippet) in enumerate(items, 1):
+        from concurrent.futures import ThreadPoolExecutor
+
+        def _fetch_fact(entry):
+            idx, (page_url, page_title, page_snippet) = entry
             body_text = extract_clean_article_text(page_url, timeout=2.5)
             if len(body_text) >= 60:
                 content = body_text
@@ -440,7 +442,10 @@ def execute_search_web_info(args: Dict[str, Any]) -> Dict[str, Any]:
                 content = f"（摘要）{page_snippet}"
             else:
                 content = f"（标题）{page_title}"
-            fact_sections.append(f"【参考事实 {idx}：{page_title}】\n{content}")
+            return f"【参考事实 {idx}：{page_title}】\n{content}"
+
+        with ThreadPoolExecutor(max_workers=min(len(items), 3)) as executor:
+            fact_sections = list(executor.map(_fetch_fact, enumerate(items, 1)))
 
         joined_facts = "\n\n".join(fact_sections)
         final_prompt = (

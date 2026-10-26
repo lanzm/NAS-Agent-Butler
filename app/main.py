@@ -94,6 +94,11 @@ def load_scheduled_tasks() -> list:
                 with open(p, "r", encoding="utf-8") as f:
                     tasks = yaml.safe_load(f)
                     if isinstance(tasks, list):
+                        # 若配置/环境变量中自定义了 DAILY_REPORT_TIME，优先动态同步至晨报定点任务
+                        if DAILY_REPORT_TIME and DAILY_REPORT_TIME != "08:00":
+                            for t in tasks:
+                                if "晨报" in t.get("name", "") and "time" in t:
+                                    t["time"] = DAILY_REPORT_TIME
                         logger.info(f"成功从 YAML 配置文件加载 {len(tasks)} 个定时任务: {p}")
                         return tasks
             except Exception as e:
@@ -254,6 +259,15 @@ class InternalNotifyHandler(BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
             self.wfile.write(b'{"status":"healthy"}')
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_HEAD(self):
+        if self.path == "/health":
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
         else:
             self.send_response(404)
             self.end_headers()
