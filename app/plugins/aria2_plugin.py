@@ -5,11 +5,10 @@ plugins/aria2_plugin.py - Aria2 离线下载扩展插件
 """
 
 import os
-import urllib.parse
-import ipaddress
 import requests
 from typing import Dict, Any
 from app.config import settings
+from app.url_security import validate_public_url
 from app.plugins.base import BasePlugin
 
 def get_rpc_url() -> str:
@@ -21,39 +20,17 @@ def get_rpc_secret() -> str:
 def is_enabled() -> bool:
     return bool(get_rpc_url())
 
-BLOCKED_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
-
 def validate_download_url(url: str) -> tuple[bool, str]:
-    """校验下载链接，防止协议注入与内网 SSRF 探测"""
+    """拒绝本地/保留地址；任意磁力链接仍由 aria2 自行解析 peer。"""
     if not url:
         return False, "必须提供下载链接 (url)"
-    
-    if url.startswith("magnet:?"):
-        return True, ""
-        
-    try:
-        parsed = urllib.parse.urlparse(url)
-    except Exception as e:
-        return False, f"下载链接解析异常: {e}"
-        
-    scheme = (parsed.scheme or "").lower()
-    if scheme not in ("http", "https", "ftp"):
-        return False, f"安全拦截：不支持的下载协议 `{scheme}`，仅支持 HTTP/HTTPS/FTP 与 magnet 链接"
-        
-    hostname = parsed.hostname
-    if not hostname:
-        return False, "下载链接未包含有效的目标主机地址"
-        
-    if hostname.lower() in BLOCKED_HOSTS:
-        return False, f"安全拦截：禁止向本地回环主机 `{hostname}` 发起离线下载"
-        
-    try:
-        ip_obj = ipaddress.ip_address(hostname)
-        if ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_unspecified:
-            return False, f"安全拦截：禁止向内部保留地址 `{hostname}` 发起离线下载"
-    except ValueError:
-        pass
-        
+
+    if url.lower().startswith("magnet:?"):
+        return False, "安全拦截：磁力链接可连接任意 peer，当前部署无法可靠限制其目标地址"
+
+    allowed, message = validate_public_url(url, schemes=("http", "https"))
+    if not allowed:
+        return False, f"安全拦截：{message}"
     return True, ""
 
 TOOL_SPEC = {
@@ -120,8 +97,11 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         return {"status": "error", "message": "Aria2 插件未配置启用，请在 .env 中设置 ARIA2_RPC_URL"}
     
     action = args.get("action")
-    url = (args.get("url") or "").strip()
-    gid = (args.get("gid") or "").strip()
+    if action != "status":
+        return {
+            "status": "error",
+            "message": "安全策略仅允许查询 Aria2 状态；新增、暂停和恢复任务当前禁用。",
+        }
 
     if action == "status":
         active = rpc_call("aria2.tellActive", [["gid", "status", "totalLength", "completedLength", "downloadSpeed", "files"]])
@@ -136,18 +116,10 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
         is_valid, err_msg = validate_download_url(url)
         if not is_valid:
             return {"status": "error", "message": err_msg}
-        res = rpc_call("aria2.addUri", [[url]])
-        if isinstance(res, dict) and "error" in res:
-            return {"status": "error", "message": res["error"]}
-        return {"status": "success", "gid": res, "message": "已成功将任务提交至 Aria2 队列。"}
-    elif action == "pause":
-        if not gid:
-            return {"status": "error", "message": "必须提供任务 GID"}
-        return {"status": "success", "result": rpc_call("aria2.pause", [gid])}
-    elif action == "unpause":
-        if not gid:
-            return {"status": "error", "message": "必须提供任务 GID"}
-        return {"status": "success", "result": rpc_call("aria2.unpause", [gid])}
+        return {
+            "status": "error",
+            "message": "安全策略暂时禁用新增下载：Aria2 会自行解析 DNS 并跟随重定向，无法保证最终目标仍是公网地址。",
+        }
     return {"status": "error", "message": f"未知动作: {action}"}
 
 

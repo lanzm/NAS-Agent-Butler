@@ -32,6 +32,7 @@ from app.calendar_helper import format_datetime_chinese
 from app.docker_client import get_docker_client
 from app.weather_calendar_helper import get_weather_calendar_summary
 from app.plugins import firewall_plugin, aria2_plugin, pc_power_plugin
+from app.url_security import fetch_public_url
 
 logger = logging.getLogger("butler.mcp.server")
 
@@ -127,14 +128,14 @@ TOOLS_REGISTRY = [
     },
     {
         "name": "manage_docker_container",
-        "description": "通过 Docker API 查询容器状态、列出运行表、抽取尾部运行日志或执行容器安全重启。",
+        "description": "通过只读 Docker API 查询容器状态、列出运行表、抽取尾部运行日志或查看容器详情。",
         "parameters": {
             "type": "object",
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["list", "logs", "restart", "inspect"],
-                    "description": "操作类型：list(列出所有容器状态), logs(提取容器日志), restart(重启指定容器), inspect(查看容器详情)"
+                    "enum": ["list", "logs", "inspect"],
+                    "description": "操作类型：list(列出容器), logs(提取容器日志), inspect(查看容器详情)；restart 当前由只读 Docker 代理策略禁用"
                 },
                 "container_name": {
                     "type": "string",
@@ -174,18 +175,18 @@ TOOLS_REGISTRY = [
     },
     {
         "name": "manage_aria2_download",
-        "description": "管理 NAS 上的 Aria2 离线下载引擎（支持查询即时下载列表/速度、添加 HTTP/磁力链接等）。",
+        "description": "查询 NAS 上 Aria2 下载任务状态与速度。新增下载当前因无法限制最终连接地址而禁用。",
         "parameters": {
             "type": "object",
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["status", "add", "pause", "unpause"],
-                    "description": "操作类型：status(查询任务与速度), add(添加下载链接), pause(暂停任务), unpause(恢复任务)"
+                    "enum": ["status"],
+                    "description": "操作类型：status(查询任务与速度)"
                 },
                 "url": {
                     "type": "string",
-                    "description": "下载资源的 HTTP/HTTPS/FTP 链接或 magnet: 磁力链接（action 为 add 时必填）"
+                    "description": "仅允许公网 HTTP/HTTPS URL（action 为 add 时必填）；禁止私有地址和磁力链接"
                 },
                 "gid": {
                     "type": "string",
@@ -197,27 +198,8 @@ TOOLS_REGISTRY = [
     },
     {
         "name": "manage_firewall_security",
-        "description": "检查与维护 Fail2ban 入侵防御防火墙（查询当前封禁 IP 列表与误封 IP 一键解封）。",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string",
-                    "enum": ["status", "unban"],
-                    "description": "操作类型：status(查看封禁列表与统计), unban(解封指定 IP)"
-                },
-                "ip": {
-                    "type": "string",
-                    "description": "待解封的目标 IPv4 或 IPv6 地址（action 为 unban 时必填）"
-                },
-                "jail": {
-                    "type": "string",
-                    "description": "Fail2ban 监狱名，默认 caddy-services",
-                    "default": "caddy-services"
-                }
-            },
-            "required": ["action"]
-        }
+        "description": "Fail2ban 管理当前因需要 Docker exec 权限而禁用。",
+        "parameters": {"type": "object", "properties": {}, "required": []}
     },
     {
         "name": "search_web_info",
@@ -308,7 +290,7 @@ def execute_get_system_health() -> Dict[str, Any]:
         return {"status": "error", "message": f"系统指标采集失败: {str(e)}"}
 
 def execute_manage_docker_container(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Docker 容器白名单管理"""
+    """只读查询 Docker 容器状态和日志；写操作由受限代理配置决定，目前默认禁用。"""
     action = args.get("action")
     container_name = (args.get("container_name") or "").strip()
     tail_lines = min(int(args.get("tail_lines", 50)), 200)
@@ -345,11 +327,7 @@ def execute_manage_docker_container(args: Dict[str, Any]) -> Dict[str, Any]:
                 "logs": logs_text
             }
         elif action == "restart":
-            container.restart(timeout=10)
-            return {
-                "status": "success",
-                "message": f"容器 `{container_name}` 已成功触发重启并恢复运行。"
-            }
+            return {"status": "error", "message": "安全策略已禁用容器重启；Docker socket 代理仅开放只读操作。"}
         elif action == "inspect":
             return {
                 "status": "success",
@@ -367,35 +345,28 @@ def execute_manage_aria2_download(args: Dict[str, Any]) -> Dict[str, Any]:
     return aria2_plugin.execute(args)
 
 def execute_manage_firewall_security(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Fail2ban 安全防火墙查询与解封"""
-    return firewall_plugin.execute(args)
+    """Fail2ban uses Docker exec, which is disabled by the read-only API policy."""
+    return {"status": "error", "message": "Fail2ban Docker exec 已因最小权限策略禁用。"}
 
 def extract_clean_article_text(url: str, timeout: float = 2.5) -> str:
     """快速抓取单个目标网页并提取纯净核心正文（剔除广告、样式、导航与页脚）"""
-    import urllib.request
     import re
     from html import unescape
-    
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-    }
+
     try:
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw_html = resp.read(250 * 1024).decode("utf-8", errors="replace")
-            cleaned = re.sub(r'<(script|style|nav|header|footer|aside|form|svg|noscript|iframe)[^>]*>.*?</\1>', '', raw_html, flags=re.DOTALL | re.IGNORECASE)
-            paras = []
-            for tag in re.finditer(r'<(p|h[1-4])[^>]*>(.*?)</\1>', cleaned, flags=re.DOTALL | re.IGNORECASE):
-                t = re.sub(r'<[^>]+>', '', tag.group(2))
-                t = re.sub(r'\s+', ' ', t).strip()
-                t = unescape(t)
-                if len(t) < 15 or any(bad in t for bad in ["版权所有", "ICP备", "免责声明", "客户端下载", "扫码关注", "分享到", "返回顶部", "登录查看"]):
-                    continue
-                paras.append(t)
-                if sum(len(p) for p in paras) >= 600:
-                    break
-            return "\n".join(paras)
+        raw_html = fetch_public_url(url, timeout=timeout, max_bytes=250 * 1024).decode("utf-8", errors="replace")
+        cleaned = re.sub(r'<(script|style|nav|header|footer|aside|form|svg|noscript|iframe)[^>]*>.*?</\1>', '', raw_html, flags=re.DOTALL | re.IGNORECASE)
+        paras = []
+        for tag in re.finditer(r'<(p|h[1-4])[^>]*>(.*?)</\1>', cleaned, flags=re.DOTALL | re.IGNORECASE):
+            t = re.sub(r'<[^>]+>', '', tag.group(2))
+            t = re.sub(r'\s+', ' ', t).strip()
+            t = unescape(t)
+            if len(t) < 15 or any(bad in t for bad in ["版权所有", "ICP备", "免责声明", "客户端下载", "扫码关注", "分享到", "返回顶部", "登录查看"]):
+                continue
+            paras.append(t)
+            if sum(len(p) for p in paras) >= 600:
+                break
+        return "\n".join(paras)
     except Exception:
         return ""
 
@@ -407,14 +378,11 @@ def execute_search_web_info(args: Dict[str, Any]) -> Dict[str, Any]:
         return {"status": "error", "message": "搜索关键词 query 不能为空"}
     try:
         from urllib.parse import quote_plus
-        from urllib.request import Request, urlopen
         import re
         from html import unescape
 
         url = f"https://cn.bing.com/search?q={quote_plus(query)}"
-        req = Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"})
-        with urlopen(req, timeout=5) as response:
-            html = response.read().decode("utf-8", errors="replace")
+        html = fetch_public_url(url, timeout=5, max_bytes=1024 * 1024).decode("utf-8", errors="replace")
 
         # 匹配 li class 含 b_algo 并提取标题、URL及摘要 snippet
         items = []
@@ -549,6 +517,23 @@ def _exec_get_weather_calendar(tool_args: Dict[str, Any]) -> Dict[str, Any]:
     return get_weather_calendar_summary(city_arg)
 
 
+OPTIONAL_TOOL_ENABLED = {
+    "manage_aria2_download": aria2_plugin.is_enabled,
+    # Fail2ban actions need Docker exec endpoints, deliberately blocked by the proxy.
+    "manage_firewall_security": firewall_plugin.is_enabled,
+    "manage_pc_power": pc_power_plugin.is_enabled,
+}
+
+
+def get_enabled_tools() -> List[Dict[str, Any]]:
+    """Return only tools whose optional integration is configured and enabled."""
+    return [
+        tool for tool in TOOLS_REGISTRY
+        if tool["name"] not in OPTIONAL_TOOL_ENABLED
+        or OPTIONAL_TOOL_ENABLED[tool["name"]]()
+    ]
+
+
 TOOL_DISPATCH_TABLE = {
     "generate_daily_report": lambda args: execute_generate_daily_report(),
     "get_system_health": lambda args: execute_get_system_health(),
@@ -649,7 +634,7 @@ def handle_request(req: Dict[str, Any]) -> Dict[str, Any]:
 
     # 4. Tools 接口
     elif method == "tools/list":
-        return jsonrpc_success(req_id, {"tools": TOOLS_REGISTRY})
+        return jsonrpc_success(req_id, {"tools": get_enabled_tools()})
 
     elif method == "tools/call":
         tool_name = params.get("name")
@@ -659,6 +644,9 @@ def handle_request(req: Dict[str, Any]) -> Dict[str, Any]:
         executor = TOOL_DISPATCH_TABLE.get(tool_name)
         if not executor:
             return jsonrpc_error(req_id, -32601, f"未知工具: {tool_name}")
+        enabled_names = {tool["name"] for tool in get_enabled_tools()}
+        if tool_name not in enabled_names:
+            return jsonrpc_error(req_id, -32601, f"工具当前未启用: {tool_name}")
 
         start_t = time.time()
         try:

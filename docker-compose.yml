@@ -7,13 +7,18 @@ services:
       dockerfile: Dockerfile
     container_name: nas-agent-butler
     restart: unless-stopped
-    # 默认使用 bridge 隔离网络；若需使用 WOL 局域网开机魔包唤醒 PC，建议切换为 host 模式
-    # network_mode: "host"
+    # 默认 bridge 网络；PC 电源管理需 WOL 广播时需单独评估网络配置。
     env_file:
       - .env
+    environment:
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
+    depends_on:
+      - docker-socket-proxy
+    networks:
+      - default
+      - docker-api
     volumes:
-      # 挂载宿主机 Docker 套接字（用于容器状态巡检；默认只读挂载更安全，若需允许 Agent 重启异常卡死容器，可移除末尾的 :ro）
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # 应用容器只访问同网络内的受限代理，不直接挂载宿主机 Docker socket。
       # 挂载宿主机系统信息目录（只读，用于提取准确的 CPU/负载与磁盘挂载数据）
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
@@ -38,3 +43,27 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    container_name: nas-agent-butler-docker-proxy
+    restart: unless-stopped
+    environment:
+      CONTAINERS: "1"
+      IMAGES: "1"
+      INFO: "1"
+      VERSION: "1"
+      PING: "1"
+      POST: "0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker-api
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+networks:
+  docker-api:
+    internal: true

@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/Python-3.11+-brightgreen.svg" alt="Python">
   <img src="https://img.shields.io/badge/Memory-<80MB-success.svg" alt="Memory">
   <img src="https://img.shields.io/badge/CPU%20Usage-~0%25-brightgreen.svg" alt="CPU">
-  <img src="https://img.shields.io/badge/Network-Zero%20Port%20Exposure-red.svg" alt="Zero Exposure">
+  <img src="https://img.shields.io/badge/Network-No%20Inbound%20Ports-red.svg" alt="No inbound ports">
   <img src="https://img.shields.io/badge/Protocol-Model%20Context%20Protocol%20(MCP)-purple.svg" alt="MCP">
 </p>
 
@@ -214,9 +214,9 @@ docker compose logs -f
 | 特性 | 说明 | 带来的价值 |
 | :--- | :--- | :--- |
 | **超极简硬件开销** | 内存 `< 80MB`，CPU 占用 `~0%`，无显卡要求 | J4125 / N5105 / 树莓派 / 1核1G VPS 均可长期稳定运行，不抢宿主机资源 |
-| **金融级内网零暴露** | 飞书 WebSocket 长连接，出网拉取事件 | 彻底免除公网 IP、动态域名解析与端口映射，绝无被公网扫盘风险 |
+| **无需入站端口** | 飞书 WebSocket 长连接，出网拉取事件 | 默认无需公网 IP 与端口映射；仍需按部署环境配置网络边界 |
 | **多模态全支持** | 支持纯文本、语音输入自动转文字、照片/报错截图 Vision 视觉理解 | 手机端随时随地语音对话、拍照问答，交互体验极佳 |
-| **MCP 标准工具架构** | 基于 Model Context Protocol 标准实现工具与大模型解耦 | 工具独立子进程沙箱隔离，杜绝任意 Shell 注入隐患，易于自由扩展 |
+| **MCP 工具架构** | 基于 Model Context Protocol 标准实现工具与大模型解耦 | 工具通过独立子进程调用；Docker API 经受限代理访问，容器重启等写操作默认关闭 |
 | **全方位隐私脱敏** | 内置敏感数据脱敏器 (`sanitizer.py`) | 日志或系统数据外发模型前，API 密钥、内网密码、Token 自动掩码过滤 |
 | **飞书原生极致交互** | 异步思考跳动动画 + 原地 Patch 无跳动无感刷新 | 卡片排版优美工整，自带 `#tr_xxxx` 全链路诊断 Trace 耗时与 Token 统计 |
 
@@ -250,7 +250,7 @@ graph TD
             MCPClient <-->|"标准输入输出管道"| MCPServer["nas_mcp_server.py"]
             
             MCPServer --> Tool1["📊 系统硬件与负载探针"]
-            MCPServer --> Tool2["🐳 Docker 容器状态与重启治理"]
+            MCPServer --> Tool2["🐳 Docker 容器只读状态与日志查询"]
             MCPServer --> Tool3["💾 磁盘 SMART 与坏道深度巡检"]
             MCPServer --> Tool4["🌤️ Wttr 免 Key 实时天气与万年历"]
             MCPServer --> Tool5["⚡ 局域网 PC 远程 WOL 开机唤醒"]
@@ -328,8 +328,8 @@ graph TD
 
 ## 🛡️ 安全最佳实践
 
-1. **Docker 挂载只读化**：`docker-compose.yml` 推荐以只读模式（`:ro`）挂载宿主机 `/proc`、`/sys`，确保任何监控采集绝不影响宿主机稳定。
-2. **零 Shell 任意执行**：不开放通用的 `exec` 或 `bash` 接口给大模型，全部操作通过白名单 MCP 语义工具受控执行，防范 Prompt 越狱注入。
+1. **限制 Docker API**：Compose 通过不发布端口的内部网络访问 `docker-socket-proxy`，应用不直接挂载宿主机 Docker socket。代理仅开放容器、镜像和基础信息读取接口（`POST=0`）；Docker socket 的 `:ro` 挂载本身不提供 API 只读权限。
+2. **限制工具能力**：不向模型提供通用 `exec` 或 `bash` 工具。容器重启、Fail2ban Docker exec 与 Aria2 新增下载因当前权限边界而禁用；网页抓取仅允许连接经校验的公网目标。
 3. **脱敏保护网**：所有流经 AI 的指标、容器日志与输出内容均经过 [`sanitizer.py`](file:///D:/program/my/nas-agent-butler-open/app/sanitizer.py) 正则脱敏过滤，密码与 Key 不会离开内网。
 
 ---

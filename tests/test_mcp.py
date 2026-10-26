@@ -58,7 +58,8 @@ class TestMCPServer(unittest.TestCase):
         res = handle_request(req)
         self.assertEqual(res["jsonrpc"], "2.0")
         self.assertIn("tools", res["result"])
-        self.assertGreater(len(res["result"]["tools"]), 0)
+        names = {tool["name"] for tool in res["result"]["tools"]}
+        self.assertIn("get_system_health", names)
 
     def test_unknown_tool_call(self):
         req = {

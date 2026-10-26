@@ -86,8 +86,22 @@ class TestWebSearchHelper(unittest.TestCase):
         res = execute_search_web_info({"query": ""})
         self.assertEqual(res["status"], "error")
 
-    @patch("urllib.request.urlopen")
-    def test_mock_search_with_snippets(self, mock_urlopen):
+    @patch("app.nas_mcp_server.fetch_public_url")
+    def test_extract_rejects_private_url(self, mock_fetch):
+        from app.nas_mcp_server import extract_clean_article_text
+        mock_fetch.side_effect = ValueError("目标地址不允许访问")
+        self.assertEqual(extract_clean_article_text("http://127.0.0.1/admin"), "")
+        mock_fetch.assert_called_once()
+
+    @patch("app.nas_mcp_server.fetch_public_url", return_value="<html><p>这是足够长的网页正文，用于检查抓取器对正常文本的提取。</p></html>".encode("utf-8"))
+    def test_extract_uses_pinned_public_fetcher(self, mock_fetch):
+        from app.nas_mcp_server import extract_clean_article_text
+        text = extract_clean_article_text("https://example.com/article")
+        self.assertIn("网页正文", text)
+        mock_fetch.assert_called_once()
+
+    @patch("app.nas_mcp_server.fetch_public_url")
+    def test_mock_search_with_snippets(self, mock_fetch):
         mock_html = """
         <html><body>
         <li class="b_algo">
@@ -100,10 +114,7 @@ class TestWebSearchHelper(unittest.TestCase):
         </li>
         </body></html>
         """
-        mock_resp = MagicMock()
-        mock_resp.read.return_value = mock_html.encode("utf-8")
-        mock_resp.__enter__.return_value = mock_resp
-        mock_urlopen.return_value = mock_resp
+        mock_fetch.return_value = mock_html.encode("utf-8")
 
         res = execute_search_web_info({"query": "测试搜索"})
         self.assertEqual(res["status"], "success")
