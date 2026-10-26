@@ -47,7 +47,7 @@ class AIAgent:
         self.api_base = settings.openai_api_base.rstrip("/")
         self.model = settings.openai_model
         self.history = []
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._mcp_client: Optional[MCPClient] = None
 
     @property

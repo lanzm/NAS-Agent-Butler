@@ -64,5 +64,25 @@ class TestAIAgentHistory(unittest.TestCase):
         self.assertEqual(len(self.agent.history), 2)
 
 
+class TestAIAgentChat(unittest.TestCase):
+    """测试 AI Agent 对话流程与锁重入（防死锁）"""
+
+    @patch("app.ai_agent.MCPClient")
+    def test_chat_lazy_mcp_client_no_deadlock(self, mock_mcp_cls):
+        mock_instance = mock_mcp_cls.return_value
+        mock_instance.get_prompt.return_value = "system prompt"
+        mock_instance.get_openai_tools.return_value = []
+
+        agent = AIAgent()
+        agent.api_key = "test_key"
+        agent.api_base = "https://api.test.com"
+
+        # Mock _call_model to return immediate answer
+        with patch.object(agent, "_call_model", return_value=({"content": "你好！我是智能管家。"}, {"total_tokens": 50}, None)):
+            res = agent.chat("你好")
+            self.assertIn("你好", res["text"])
+            self.assertIn("trace_tag", res)
+
+
 if __name__ == "__main__":
     unittest.main()
