@@ -274,25 +274,23 @@ class FeishuChannel(BaseChannel):
         return f"data:{mime_type};base64,{b64_str}", None
 
     def _animate_loading(self, placeholder_msg_id: str, stop_event: threading.Event, status_holder: list, poke_event: threading.Event):
-        """后台状态跳点与计时线程（智能降频防飞书 API 频控）"""
+        """后台状态跳点与计时线程（1.6s 安全节奏刷新动态滑块跑马灯与秒数）"""
         start_time = time.time()
-        dot_cycle = [".", "..", "..."]
-        dot_idx = 0
+        step_idx = 0
 
         while not stop_event.is_set():
-            # 阶段状态变化立即唤醒处理；默认等待 2.5 秒再刷新秒数跳点，减少 60% 冗余卡片 Patch 请求
-            poke_event.wait(2.5)
+            # 阶段状态变化立即唤醒处理；默认等待 1.6 秒刷新跑马灯滑块与秒数（安全避开频控）
+            poke_event.wait(1.6)
             poke_event.clear()
             if stop_event.is_set():
                 break
 
             elapsed = time.time() - start_time
-            current_text = status_holder[0] if status_holder else "思考中"
-            dot = dot_cycle[dot_idx % len(dot_cycle)]
-            dot_idx += 1
+            current_text = status_holder[0] if status_holder else TaskStatus.REQUEST_CLOUD_MODEL
+            step_idx += 1
 
             try:
-                card = build_loading_card(current_text, spinner=dot, elapsed=elapsed)
+                card = build_loading_card(current_text, elapsed=elapsed, step_idx=step_idx)
                 self.patch_card(placeholder_msg_id, card)
             except Exception as e:
                 logger.debug(f"状态更新跳过: {e}")

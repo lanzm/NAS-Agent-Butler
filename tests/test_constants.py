@@ -55,6 +55,16 @@ class TestStatusContract(unittest.TestCase):
         content = elements[0].get("text", {}).get("content", "")
         self.assertIn("请求云端模型", content)
 
+    def test_loading_card_marquee_frames(self):
+        """测试加载卡片包含动态跑马灯进度条"""
+        card0 = build_loading_card(TaskStatus.REQUEST_CLOUD_MODEL, step_idx=0)
+        card1 = build_loading_card(TaskStatus.REQUEST_CLOUD_MODEL, step_idx=1)
+        content0 = card0["elements"][0]["text"]["content"]
+        content1 = card1["elements"][0]["text"]["content"]
+        self.assertIn("[ ■■■□□□□□ ]", content0)
+        self.assertIn("[ □■■■□□□□ ]", content1)
+        self.assertNotEqual(content0, content1)
+
 
 if __name__ == "__main__":
     unittest.main()

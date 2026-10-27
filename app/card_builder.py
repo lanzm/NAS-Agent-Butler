@@ -260,16 +260,42 @@ def build_status_card(data: dict, trace_tag: Optional[str] = None) -> dict:
     }
 
 
-def build_loading_card(stage_text: str = TaskStatus.REQUEST_CLOUD_MODEL, spinner: str = "", elapsed: float = 0.0) -> dict:
-    """构建飞书原生状态胶囊标签 (Tag) 卡片（保留'正在处理'胶囊，文案精炼极简+动态秒数/跳点）"""
+MARQUEE_FRAMES = [
+    "[ ■■■□□□□□ ]",
+    "[ □■■■□□□□ ]",
+    "[ □□■■■□□□ ]",
+    "[ □□□■■■□□ ]",
+    "[ □□□□■■■□ ]",
+    "[ □□□□□■■■ ]",
+    "[ □□□□■■■□ ]",
+    "[ □□□■■■□□ ]",
+    "[ □□■■■□□□ ]",
+    "[ □■■■□□□□ ]",
+]
+
+
+def build_loading_card(
+    stage_text: str = TaskStatus.REQUEST_CLOUD_MODEL,
+    spinner: str = "",
+    elapsed: float = 0.0,
+    step_idx: Optional[int] = None
+) -> dict:
+    """构建飞书原生状态胶囊标签 (Tag) 卡片（含正在处理胶囊、动态秒数与滑块跑马灯进度条）"""
     clean_stage = str(stage_text).rstrip("。.…")
     if clean_stage in (TaskStatus.REQUEST_CLOUD_MODEL, "思考中"):
         clean_stage = get_i18n("thinking")
-    dots = spinner or ""
+
     time_str = f" ({elapsed:.1f}s)" if elapsed >= 1.0 else ""
-    dot_str = f" {dots}" if dots else ""
-    suffix = f"{time_str}{dot_str}"
     processing_tag = get_i18n("processing")
+
+    # 确定跑马灯当前帧索引
+    if step_idx is not None:
+        idx = step_idx
+    elif elapsed > 0:
+        idx = int(elapsed / 1.6)
+    else:
+        idx = 0
+    frame = MARQUEE_FRAMES[idx % len(MARQUEE_FRAMES)]
 
     return {
         "config": {
@@ -287,7 +313,7 @@ def build_loading_card(stage_text: str = TaskStatus.REQUEST_CLOUD_MODEL, spinner
                 "tag": "div",
                 "text": {
                     "tag": "lark_md",
-                    "content": f"<text_tag color='blue'>{processing_tag}</text_tag>　**{clean_stage}**{suffix}"
+                    "content": f"<text_tag color='blue'>{processing_tag}</text_tag>　**{clean_stage}**{time_str}\n\n`{frame}`"
                 }
             }
         ]
