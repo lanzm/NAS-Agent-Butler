@@ -55,15 +55,16 @@ class TestStatusContract(unittest.TestCase):
         content = elements[0].get("text", {}).get("content", "")
         self.assertIn("请求云端模型", content)
 
-    def test_loading_card_marquee_frames(self):
-        """测试加载卡片包含动态跑马灯进度条"""
-        card0 = build_loading_card(TaskStatus.REQUEST_CLOUD_MODEL, step_idx=0)
-        card1 = build_loading_card(TaskStatus.REQUEST_CLOUD_MODEL, step_idx=1)
-        content0 = card0["elements"][0]["text"]["content"]
-        content1 = card1["elements"][0]["text"]["content"]
-        self.assertIn("[ ■■■□□□□□ ]", content0)
-        self.assertIn("[ □■■■□□□□ ]", content1)
-        self.assertNotEqual(content0, content1)
+    def test_loading_card_clean_format(self):
+        """测试加载卡片极简纯净排版（无多余跑马灯）"""
+        card = build_loading_card(TaskStatus.REQUEST_CLOUD_MODEL, elapsed=3.2)
+        elements = card.get("elements", [])
+        self.assertTrue(len(elements) > 0)
+        content = elements[0].get("text", {}).get("content", "")
+        self.assertIn("请求云端模型", content)
+        self.assertIn("(3.2s)", content)
+        self.assertNotIn("■", content)
+        self.assertNotIn("□", content)
 
 
 if __name__ == "__main__":
