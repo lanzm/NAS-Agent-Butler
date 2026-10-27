@@ -17,6 +17,7 @@ import logging
 import subprocess
 import threading
 from typing import Dict, Any, List, Optional
+from app.utils import find_first_existing_path
 
 logger = logging.getLogger("butler.mcp.client")
 
@@ -35,14 +36,7 @@ class MCPClient:
                 os.path.join(os.getcwd(), "app", "nas_mcp_server.py"),
                 os.path.join(os.getcwd(), "nas_mcp_server.py"),
             ]
-            script_path = None
-            for p in possible_paths:
-                if os.path.exists(p):
-                    script_path = p
-                    break
-            
-            if not script_path:
-                script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "nas_mcp_server.py")
+            script_path = find_first_existing_path(possible_paths) or os.path.join(os.path.dirname(os.path.abspath(__file__)), "nas_mcp_server.py")
 
             server_cmd = [sys.executable, script_path]
 

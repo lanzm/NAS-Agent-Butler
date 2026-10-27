@@ -11,6 +11,7 @@ import psutil
 from typing import Optional
 
 from app.docker_client import get_docker_client
+from app.utils import format_bytes, human_bytes, format_duration_chinese
 
 
 def calc_container_uptime(started_at_str: str) -> str:
@@ -22,30 +23,9 @@ def calc_container_uptime(started_at_str: str) -> str:
         start_dt = datetime.datetime.fromisoformat(clean_str)
         now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
         diff = now - start_dt
-        days = diff.days
-        hours = diff.seconds // 3600
-        minutes = (diff.seconds % 3600) // 60
-        if days > 0:
-            return f"{days}天{hours}小时"
-        elif hours > 0:
-            return f"{hours}小时{minutes}分钟"
-        else:
-            return f"{minutes}分钟"
+        return format_duration_chinese(diff.total_seconds(), compact=True)
     except Exception:
         return "未知"
-
-
-def human_bytes(b) -> str:
-    """将字节数转换为人类可读字符串 (B/KB/MB/GB/TB)"""
-    if b is None or b == 0:
-        return "0B"
-    units = ["B", "KB", "MB", "GB", "TB", "PB"]
-    i = 0
-    val = float(b)
-    while val >= 1024.0 and i < len(units) - 1:
-        val /= 1024.0
-        i += 1
-    return f"{val:.1f}{units[i]}" if i > 0 else f"{int(val)}B"
 
 
 class SystemCollector:
@@ -65,16 +45,7 @@ class SystemCollector:
         try:
             boot_time = psutil.boot_time()
             uptime_sec = int(time.time() - boot_time)
-            days = uptime_sec // 86400
-            hours = (uptime_sec % 86400) // 3600
-            minutes = (uptime_sec % 3600) // 60
-            parts = []
-            if days > 0:
-                parts.append(f"{days}天")
-            if hours > 0:
-                parts.append(f"{hours}小时")
-            parts.append(f"{minutes}分钟")
-            return "".join(parts) or "刚刚启动"
+            return format_duration_chinese(uptime_sec)
         except Exception:
             return "未知"
 

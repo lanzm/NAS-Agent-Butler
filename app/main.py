@@ -32,6 +32,7 @@ from app.card_builder import (
     build_ai_response_card,
     build_message_card
 )
+from app.utils import find_first_existing_path
 
 logging.basicConfig(
     level=logging.INFO,
@@ -88,21 +89,21 @@ def load_scheduled_tasks() -> list:
         os.path.join(os.getcwd(), "config", "schedules.yaml"),
         os.path.join(os.getcwd(), "config", "schedules.yml"),
     ]
-    for p in possible_paths:
-        if os.path.exists(p):
-            try:
-                with open(p, "r", encoding="utf-8") as f:
-                    tasks = yaml.safe_load(f)
-                    if isinstance(tasks, list):
-                        # 若配置/环境变量中自定义了 DAILY_REPORT_TIME，优先动态同步至晨报定点任务
-                        if DAILY_REPORT_TIME and DAILY_REPORT_TIME != "08:00":
-                            for t in tasks:
-                                if "晨报" in t.get("name", "") and "time" in t:
-                                    t["time"] = DAILY_REPORT_TIME
-                        logger.info(f"成功从 YAML 配置文件加载 {len(tasks)} 个定时任务: {p}")
-                        return tasks
-            except Exception as e:
-                logger.error(f"解析定时任务 YAML 配置文件失败 ({p}): {e}")
+    p = find_first_existing_path(possible_paths)
+    if p:
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                tasks = yaml.safe_load(f)
+                if isinstance(tasks, list):
+                    # 若配置/环境变量中自定义了 DAILY_REPORT_TIME，优先动态同步至晨报定点任务
+                    if DAILY_REPORT_TIME and DAILY_REPORT_TIME != "08:00":
+                        for t in tasks:
+                            if "晨报" in t.get("name", "") and "time" in t:
+                                t["time"] = DAILY_REPORT_TIME
+                    logger.info(f"成功从 YAML 配置文件加载 {len(tasks)} 个定时任务: {p}")
+                    return tasks
+        except Exception as e:
+            logger.error(f"解析定时任务 YAML 配置文件失败 ({p}): {e}")
 
     # 默认兜底任务
     default_prompt = (

@@ -18,7 +18,9 @@ from typing import Dict, Any
 
 logger = logging.getLogger("butler.weather")
 
-from app.calendar_helper import GAN, ZHI, SHENGXIAO, MONTH_CN, DAY_CN, SOLAR_TERMS_C, get_lunar_date
+from app.calendar_helper import (
+    GAN, ZHI, SHENGXIAO, MONTH_CN, DAY_CN, SOLAR_TERMS_C, get_lunar_date, get_chinese_weekday
+)
 from app.config import settings
 
 WEATHER_ZH_MAP = {
@@ -124,7 +126,7 @@ def get_calendar_info(dt: datetime.date = None) -> Dict[str, Any]:
     if dt is None:
         dt = datetime.date.today()
 
-    weekday_cn = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][dt.weekday()]
+    weekday_cn = get_chinese_weekday(dt)
     is_weekend = dt.weekday() >= 5
 
     # 1. 农历换算

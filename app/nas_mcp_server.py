@@ -173,34 +173,8 @@ TOOLS_REGISTRY = [
             "required": []
         }
     },
-    {
-        "name": "manage_aria2_download",
-        "description": "查询 NAS 上 Aria2 下载任务状态与速度。新增下载当前因无法限制最终连接地址而禁用。",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string",
-                    "enum": ["status"],
-                    "description": "操作类型：status(查询任务与速度)"
-                },
-                "url": {
-                    "type": "string",
-                    "description": "仅允许公网 HTTP/HTTPS URL（action 为 add 时必填）；禁止私有地址和磁力链接"
-                },
-                "gid": {
-                    "type": "string",
-                    "description": "任务 GID（action 为 pause/unpause 时必填）"
-                }
-            },
-            "required": ["action"]
-        }
-    },
-    {
-        "name": "manage_firewall_security",
-        "description": "Fail2ban 管理当前因需要 Docker exec 权限而禁用。",
-        "parameters": {"type": "object", "properties": {}, "required": []}
-    },
+    aria2_plugin.TOOL_SPEC,
+    firewall_plugin.TOOL_SPEC,
     {
         "name": "search_web_info",
         "description": "通过必应搜索与网页正文清洗检索外部互联网实时动态、权威新闻、技术故障等。注意：返回内容为底层参考事实，你拿到本工具结果后，必须紧扣用户的原始问题进行归纳和提炼，直接给出针对性的最终结论，严禁机械罗列原始条目与外部长链接！",
@@ -215,21 +189,7 @@ TOOLS_REGISTRY = [
             "required": ["query"]
         }
     },
-    {
-        "name": "manage_pc_power",
-        "description": "通过局域网唤醒（WOL）唤醒家庭 PC，或经由已配置免密私钥对 Windows PC 执行远程休眠/关机。",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string",
-                    "enum": ["wake", "sleep", "shutdown"],
-                    "description": "操作类型：wake(局域网唤醒开机), sleep(远程休眠/待机), shutdown(远程关机)"
-                }
-            },
-            "required": ["action"]
-        }
-    }
+    pc_power_plugin.TOOL_SPEC
 ]
 
 # ==============================================================================

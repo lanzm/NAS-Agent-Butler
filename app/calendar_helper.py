@@ -5,7 +5,7 @@ calendar_helper.py - 纯 Python 轻量级农历、节气与节假日计算器 (�
 """
 
 import datetime
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Tuple, Optional, Union
 
 # 1900-2100 农历核心数据（16进制编码月相与闰月）
 LUNAR_INFO = [
@@ -26,6 +26,15 @@ LUNAR_INFO = [
     0x0b5a0, 0x056d0, 0x055b2, 0x049b0, 0x0a577, 0x0a4b0, 0x0aa50, 0x1b255, 0x06d20, 0x0ada0,
     0x14b63
 ]
+
+WEEKDAYS_CN = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+
+
+def get_chinese_weekday(dt: Optional[Union[datetime.date, datetime.datetime]] = None) -> str:
+    """获取中文星期，如 '星期一'"""
+    if dt is None:
+        dt = datetime.date.today()
+    return WEEKDAYS_CN[dt.weekday()]
 
 GAN = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"]
 ZHI = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"]
@@ -137,7 +146,7 @@ def get_solar_term(dt: datetime.date) -> str:
 def get_holiday_status(dt: datetime.date) -> Dict[str, Any]:
     """判定是否是工作日/周末/法定节假日"""
     weekday = dt.weekday()  # 0~6
-    weekday_cn = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][weekday]
+    weekday_cn = get_chinese_weekday(dt)
     is_weekend = weekday >= 5
 
     # 尝试优先导入 chinesecalendar 精准判定国家法定调休
@@ -208,6 +217,6 @@ def format_datetime_chinese(dt: Optional[datetime.datetime] = None) -> str:
     """统一输出中文日期时间与星期 (如: '2026年10月23日 15:30 星期五')"""
     if dt is None:
         dt = datetime.datetime.now()
-    weekday_cn = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][dt.weekday()]
+    weekday_cn = get_chinese_weekday(dt)
     return dt.strftime(f"%Y年%m月%d日 %H:%M {weekday_cn}")
 

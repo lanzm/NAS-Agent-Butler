@@ -10,6 +10,7 @@ from typing import Dict, Any
 from app.config import settings
 from app.url_security import validate_public_url
 from app.plugins.base import BasePlugin
+from app.utils import format_bytes
 
 def get_rpc_url() -> str:
     return os.getenv("ARIA2_RPC_URL", settings.aria2_rpc_url).strip()
@@ -35,18 +36,18 @@ def validate_download_url(url: str) -> tuple[bool, str]:
 
 TOOL_SPEC = {
     "name": "manage_aria2_download",
-    "description": "管理 NAS 上的 Aria2 离线下载引擎（支持查询即时下载列表/速度、添加 HTTP/磁力链接等）。",
+    "description": "查询 NAS 上 Aria2 下载任务状态与速度。新增下载当前因无法限制最终连接地址而禁用。",
     "parameters": {
         "type": "object",
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["status", "add", "pause", "unpause"],
-                "description": "操作类型：status(查询任务与速度), add(添加下载链接), pause(暂停任务), unpause(恢复任务)"
+                "enum": ["status"],
+                "description": "操作类型：status(查询任务与速度)"
             },
             "url": {
                 "type": "string",
-                "description": "下载资源的 HTTP/HTTPS/FTP 链接或 magnet: 磁力链接（action 为 add 时必填）"
+                "description": "仅允许公网 HTTP/HTTPS URL（action 为 add 时必填）；禁止私有地址和磁力链接"
             },
             "gid": {
                 "type": "string",
@@ -56,17 +57,6 @@ TOOL_SPEC = {
         "required": ["action"]
     }
 }
-
-def format_bytes(size):
-    try:
-        size = float(size)
-    except Exception:
-        return "0 B"
-    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-        if size < 1024.0:
-            return f"{size:.2f} {unit}"
-        size /= 1024.0
-    return f"{size:.2f} PB"
 
 def rpc_call(method, params=None):
     if params is None:
