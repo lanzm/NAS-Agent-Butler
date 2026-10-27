@@ -23,21 +23,12 @@ from app.trace_tracker import TraceTracker
 from app.card_builder import clean_ai_content
 from app.calendar_helper import format_datetime_chinese
 from app.config import settings
+from app.constants import TaskStatus, TOOL_STATUS_MAP
 
 logger = logging.getLogger("butler.agent")
 
-# 工具执行中面向飞书状态胶囊的人性化提示映射
-STATUS_MAP = {
-    "generate_daily_report": "生成巡检日报",
-    "get_system_health": "采集系统指标",
-    "manage_docker_container": "查询容器状态",
-    "manage_aria2_download": "查询下载进度",
-    "manage_firewall_security": "查询安全防护",
-    "search_web_info": "联网检索资讯",
-    "manage_pc_power": "发送电源控制",
-    "get_container_logs": "读取容器日志",
-    "get_weather_calendar": "获取天气与日历",
-}
+# 保持 STATUS_MAP 别名兼容，统一源自 app.constants.TOOL_STATUS_MAP
+STATUS_MAP = TOOL_STATUS_MAP
 
 
 class AIAgent:
@@ -169,7 +160,7 @@ class AIAgent:
         prompt_desc = f"[图片] {user_prompt[:40]}" if image_url else user_prompt[:50]
         logger.info(f"[TRACE #{trace.trace_id}] 开始处理指令: {prompt_desc}")
         if status_callback:
-            status_callback("思考中")
+            status_callback(TaskStatus.REQUEST_CLOUD_MODEL)
 
         with self._lock:
             # 1. 动态生成时间并从 MCP 动态拉取 sre_engineer Prompt
@@ -268,7 +259,7 @@ class AIAgent:
                         args = {}
 
                     if status_callback:
-                        status_callback(STATUS_MAP.get(func_name, "执行命令"))
+                        status_callback(TOOL_STATUS_MAP.get(func_name, func_name))
 
                     logger.info(f"[TRACE #{trace.trace_id}] 触发 MCP 工具: {func_name}(args={args})")
                     
@@ -284,7 +275,7 @@ class AIAgent:
                     last_tool_output = content_str
 
                     if status_callback:
-                        status_callback("正在生成报告")
+                        status_callback(TaskStatus.GENERATE_REPORT)
 
                     sanitized_content = sanitize_text(content_str)
                     messages.append({
@@ -296,7 +287,7 @@ class AIAgent:
             # 若经历了工具调用但尚未产生自然语言结论，强制追加终局归纳总结轮（关闭工具调用）
             logger.info(f"[TRACE #{trace.trace_id}] 发起终局归纳总结推理 (关闭工具调用通道)")
             if status_callback:
-                status_callback("正在提炼结论")
+                status_callback(TaskStatus.SUMMARIZE_CONCLUSION)
 
             final_start_t = time.time()
             final_payload = {

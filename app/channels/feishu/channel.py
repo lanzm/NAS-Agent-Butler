@@ -40,6 +40,7 @@ from app.card_builder import (
 from app.audio_transcriber import transcribe_audio_with_gemini
 
 from app.config import settings
+from app.constants import TaskStatus
 
 logger = logging.getLogger("butler.feishu")
 
@@ -355,7 +356,7 @@ class FeishuChannel(BaseChannel):
 
     def _process_message_async(self, msg_id: str, raw_text: str, image_url: Optional[str] = None):
         """异步处理文本/图片指令"""
-        initial_status = "分析图片中" if image_url else "思考中"
+        initial_status = TaskStatus.IMAGE_ANALYZING if image_url else TaskStatus.REQUEST_CLOUD_MODEL
 
         def _handle(on_status_change, set_status):
             res_type, res_data = self.action_handler.handle_text_command(
@@ -386,7 +387,7 @@ class FeishuChannel(BaseChannel):
             if not audio_bytes:
                 return build_message_card("🎤 语音读取受限", dl_err or "未能获取音频内容，请重试。", template="orange")
 
-            set_status("识别语音中")
+            set_status(TaskStatus.AUDIO_TRANSCRIBING)
             transcribed_text, asr_err = transcribe_audio_with_gemini(audio_bytes)
             if not transcribed_text or transcribed_text == "[未能清晰识别语音]":
                 card_title = "🎤 语音识别接口异常" if asr_err else "🎤 语音未能识别"
@@ -394,7 +395,7 @@ class FeishuChannel(BaseChannel):
                 return build_message_card(card_title, card_content, template="orange")
 
             logger.info(f"语音识别结果: '{transcribed_text}'")
-            set_status("思考中")
+            set_status(TaskStatus.REQUEST_CLOUD_MODEL)
 
             res_type, res_data = self.action_handler.handle_text_command(
                 transcribed_text,
@@ -414,7 +415,7 @@ class FeishuChannel(BaseChannel):
                 final_content = voice_prefix + str(res_data).lstrip("\n")
                 return build_message_card("🤖 NAS 家庭智能管家", final_content)
 
-        self._run_with_loading_lifecycle(msg_id, "正在收听语音", _handle)
+        self._run_with_loading_lifecycle(msg_id, TaskStatus.AUDIO_RECEIVING, _handle)
 
     def _extract_post_content(self, content_dict: dict) -> Tuple[str, str]:
         """从富文本消息中提取文本与首张图片"""

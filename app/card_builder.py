@@ -10,13 +10,14 @@ import json
 import re
 from typing import Optional
 from app.config import settings
+from app.constants import TaskStatus
 
 I18N = {
     "zh": {
         "bot_title": "🤖 NAS 智能管家",
         "loading_title": "⚡ NAS 智能管家",
         "processing": "🌀 正在处理",
-        "thinking": "思考中",
+        "thinking": TaskStatus.REQUEST_CLOUD_MODEL,
         "alarm_title": "🚨 NAS 系统异常告警",
         "status_title": "📊 NAS 系统运行概况",
         "active_alarms": "**⚠️ 当前活跃告警**：",
@@ -35,7 +36,7 @@ I18N = {
         "bot_title": "🤖 NAS Smart Butler",
         "loading_title": "⚡ NAS Smart Butler",
         "processing": "🌀 Processing",
-        "thinking": "Thinking",
+        "thinking": "Requesting Model",
         "alarm_title": "🚨 NAS System Alert",
         "status_title": "📊 NAS System Overview",
         "active_alarms": "**⚠️ Active Alerts**:",
@@ -259,10 +260,10 @@ def build_status_card(data: dict, trace_tag: Optional[str] = None) -> dict:
     }
 
 
-def build_loading_card(stage_text: str = "思考中", spinner: str = "", elapsed: float = 0.0) -> dict:
+def build_loading_card(stage_text: str = TaskStatus.REQUEST_CLOUD_MODEL, spinner: str = "", elapsed: float = 0.0) -> dict:
     """构建飞书原生状态胶囊标签 (Tag) 卡片（保留'正在处理'胶囊，文案精炼极简+动态秒数/跳点）"""
-    clean_stage = stage_text.rstrip("。.…")
-    if clean_stage == "思考中":
+    clean_stage = str(stage_text).rstrip("。.…")
+    if clean_stage in (TaskStatus.REQUEST_CLOUD_MODEL, "思考中"):
         clean_stage = get_i18n("thinking")
     dots = spinner or ""
     time_str = f" ({elapsed:.1f}s)" if elapsed >= 1.0 else ""
