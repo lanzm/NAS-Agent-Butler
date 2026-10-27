@@ -195,7 +195,7 @@ def get_calendar_info(dt: datetime.date = None) -> Dict[str, Any]:
 
 def get_wttr_weather(city: str = None) -> Dict[str, Any]:
     """调用 wttr.in 免 Key API 获取实时天气与今日预报"""
-    default_city = os.getenv("DEFAULT_CITY", settings.default_city).strip() or "北京"
+    default_city = settings.default_city or "北京"
     raw_city = (city or default_city).strip()
     
     # 防注入与 SSRF：严格净化城市参数，仅允许汉字、英文字母、数字和横杠空格，最长 30 字符

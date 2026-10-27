@@ -13,10 +13,10 @@ from app.plugins.base import BasePlugin
 from app.utils import format_bytes
 
 def get_rpc_url() -> str:
-    return os.getenv("ARIA2_RPC_URL", settings.aria2_rpc_url).strip()
+    return settings.aria2_rpc_url
 
 def get_rpc_secret() -> str:
-    return os.getenv("ARIA2_RPC_SECRET", settings.aria2_rpc_secret).strip()
+    return settings.aria2_rpc_secret
 
 def is_enabled() -> bool:
     return bool(get_rpc_url())

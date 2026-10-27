@@ -7,7 +7,7 @@ config.py - 系统核心配置与类型安全校验层
 import os
 import logging
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Any
 
 logger = logging.getLogger("butler.config")
 
@@ -96,9 +96,9 @@ class ButlerConfig:
             daily_report_time=get_str("DAILY_REPORT_TIME", "08:00"),
             default_city=get_str("DEFAULT_CITY", "北京") or "北京",
             default_language=get_str("DEFAULT_LANGUAGE", "zh").lower(),
-            openai_api_key=get_str("OPENAI_API_KEY", ""),
+            openai_api_key=get_str("OPENAI_API_KEY") or get_str("AI_API_KEY", ""),
             openai_api_base=get_str("OPENAI_API_BASE", "https://api.openai.com/v1"),
-            openai_model=get_str("OPENAI_MODEL", "gemini-flash-lite-latest") or "gemini-flash-lite-latest",
+            openai_model=get_str("OPENAI_MODEL") or get_str("AI_MODEL", "gemini-flash-lite-latest") or "gemini-flash-lite-latest",
             feishu_app_id=get_str("FEISHU_APP_ID", ""),
             feishu_app_secret=get_str("FEISHU_APP_SECRET", ""),
             feishu_receive_id=get_str("FEISHU_RECEIVE_ID", ""),
@@ -115,4 +115,38 @@ class ButlerConfig:
         )
 
 
-settings = ButlerConfig.load()
+class SettingsProxy:
+    """
+    全局配置动态代理单例：
+    1. 动态反射当前环境最新取值，避免多模块常驻运行时环境变量 patch/热修改失效；
+    2. 支持直接属性覆盖赋值（用于单元测试 settings.xxx = yyy）；
+    3. 支持 reload() 重置本地覆盖并重新从环境加载。
+    """
+
+    def __init__(self):
+        object.__setattr__(self, "_overrides", {})
+
+    def __getattr__(self, name: str) -> Any:
+        overrides = object.__getattribute__(self, "_overrides")
+        if name in overrides:
+            return overrides[name]
+        cfg = ButlerConfig.load()
+        if hasattr(cfg, name):
+            return getattr(cfg, name)
+        raise AttributeError(f"'SettingsProxy' object has no attribute '{name}'")
+
+    def __setattr__(self, name: str, value: Any):
+        if name == "_overrides":
+            object.__setattr__(self, name, value)
+        else:
+            object.__getattribute__(self, "_overrides")[name] = value
+
+    def reload(self) -> ButlerConfig:
+        object.__getattribute__(self, "_overrides").clear()
+        return ButlerConfig.load()
+
+    def __dir__(self):
+        return sorted(set(dir(super()) + list(ButlerConfig.__dataclass_fields__.keys()) + list(object.__getattribute__(self, "_overrides").keys())))
+
+
+settings = SettingsProxy()

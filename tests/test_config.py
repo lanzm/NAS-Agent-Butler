@@ -64,6 +64,24 @@ class TestConfig(unittest.TestCase):
             self.assertTrue(cfg.enable_pc_power)
             self.assertEqual(cfg.target_pc_mac, "AA:BB:CC:DD:EE:FF")
 
+    def test_settings_proxy_dynamic_reflection(self):
+        """测试 SettingsProxy 动态环境感知与单测属性覆盖"""
+        # 1. 动态感知环境变量 patch
+        with patch.dict(os.environ, {"DEFAULT_CITY": "深圳", "DEFAULT_LANGUAGE": "en"}):
+            self.assertEqual(settings.default_city, "深圳")
+            self.assertEqual(settings.default_language, "en")
+
+        # 2. 动态支持直接属性覆盖与 reload() 重置
+        try:
+            settings.default_city = "杭州"
+            self.assertEqual(settings.default_city, "杭州")
+        finally:
+            settings.reload()
+
+        # 3. 访问不存在字段抛出 AttributeError
+        with self.assertRaises(AttributeError):
+            _ = settings.non_existent_key_xyz
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -16,6 +16,7 @@ I18N = {
     "zh": {
         "bot_title": "🤖 NAS 智能管家",
         "loading_title": "⚡ NAS 智能管家",
+        "image_analysis_title": "🖼️ 图片视觉诊断",
         "processing": "🌀 正在处理",
         "thinking": TaskStatus.REQUEST_CLOUD_MODEL,
         "alarm_title": "🚨 NAS 系统异常告警",
@@ -31,10 +32,19 @@ I18N = {
         "btn_status": "📊 查看系统概况",
         "btn_docker": "🐳 检查容器",
         "btn_cancel": "❌ 取消",
+        "toast_status_refreshed": "✅ 系统指标已刷新",
+        "check_docker_prompt": "请以 SRE 架构师视角深度检查当前所有 Docker 容器拓扑健康状态与异常退出情况",
+        "toast_docker_updated": "🐳 容器状态已更新",
+        "check_docker_title": "🐳 Docker 容器拓扑健康诊断",
+        "toast_op_cancelled": "操作已取消",
+        "cancel_op_title": "❌ 操作已取消",
+        "cancel_op_content": "当前敏感操作已安全取消。",
+        "toast_unknown_action": "未知动作: {action}",
     },
     "en": {
         "bot_title": "🤖 NAS Smart Butler",
         "loading_title": "⚡ NAS Smart Butler",
+        "image_analysis_title": "🖼️ Image Analysis",
         "processing": "🌀 Processing",
         "thinking": "Requesting Model",
         "alarm_title": "🚨 NAS System Alert",
@@ -50,12 +60,26 @@ I18N = {
         "btn_status": "📊 System Overview",
         "btn_docker": "🐳 Check Containers",
         "btn_cancel": "❌ Cancel",
+        "toast_status_refreshed": "✅ System metrics refreshed",
+        "check_docker_prompt": "Please inspect the health status and abnormal exits of all Docker containers from an SRE architect perspective.",
+        "toast_docker_updated": "🐳 Containers updated",
+        "check_docker_title": "🐳 Docker Container Health Inspection",
+        "toast_op_cancelled": "Operation cancelled",
+        "cancel_op_title": "❌ Operation Cancelled",
+        "cancel_op_content": "The requested sensitive operation has been cancelled.",
+        "toast_unknown_action": "Unknown action: {action}",
     }
 }
 
-def get_i18n(key: str, default: str = "") -> str:
-    lang = "en" if os.getenv("DEFAULT_LANGUAGE", settings.default_language).strip().lower() == "en" else "zh"
-    return I18N.get(lang, I18N["zh"]).get(key, default)
+def get_i18n(key: str, default: str = "", **kwargs) -> str:
+    lang = "en" if settings.default_language == "en" else "zh"
+    template_str = I18N.get(lang, I18N["zh"]).get(key, default)
+    if kwargs:
+        try:
+            return template_str.format(**kwargs)
+        except Exception:
+            return template_str
+    return template_str
 
 
 def format_feishu_markdown(text: str) -> str:

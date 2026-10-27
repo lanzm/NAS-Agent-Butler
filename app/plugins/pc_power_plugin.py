@@ -12,9 +12,7 @@ from app.config import settings
 from app.plugins.base import BasePlugin
 
 def is_enabled() -> bool:
-    enabled = os.getenv("ENABLE_PC_POWER", "").strip().lower() == "true" if "ENABLE_PC_POWER" in os.environ else settings.enable_pc_power
-    mac = os.getenv("TARGET_PC_MAC", settings.target_pc_mac).strip()
-    return enabled and bool(mac)
+    return settings.enable_pc_power and bool(settings.target_pc_mac)
 
 TOOL_SPEC = {
     "name": "manage_pc_power",
@@ -49,11 +47,10 @@ def execute(args: Dict[str, Any]) -> Dict[str, Any]:
 
     action = args.get("action")
 
-    mac = os.getenv("TARGET_PC_MAC", settings.target_pc_mac).strip()
-    ip = os.getenv("TARGET_PC_IP", settings.target_pc_ip).strip()
-    user = os.getenv("TARGET_PC_USER", settings.target_pc_user).strip() or "Administrator"
-    port_str = os.getenv("TARGET_PC_PORT", "")
-    port = int(port_str) if port_str.isdigit() else settings.target_pc_port
+    mac = settings.target_pc_mac
+    ip = settings.target_pc_ip
+    user = settings.target_pc_user or "Administrator"
+    port = settings.target_pc_port
 
     if action == "wake":
         ok = send_magic_packet(mac)
