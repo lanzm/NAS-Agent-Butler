@@ -29,6 +29,15 @@ class TestCardBuilder(unittest.TestCase):
         res = format_feishu_markdown(text)
         self.assertIn("```bash\ndocker ps\n```", res)
 
+    def test_format_feishu_markdown_list_spacing(self):
+        """测试连续列表条目自动扩展为空行分隔，避免文字紧挨堆积"""
+        text = "• Docker 容器生态：14个运行中。\n• Aria2 离线下载：正常。\n• PC 唤醒：已就绪。"
+        res = format_feishu_markdown(text)
+        self.assertEqual(
+            res,
+            "• Docker 容器生态：14个运行中。\n\n• Aria2 离线下载：正常。\n\n• PC 唤醒：已就绪。"
+        )
+
     def test_clean_ai_content_json_stripping(self):
         """测试剥离大模型返回的 JSON 外壳"""
         raw = '{"text": "今日天气晴朗，系统运行平稳"}'

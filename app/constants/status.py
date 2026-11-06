@@ -37,4 +37,5 @@ TOOL_STATUS_MAP: dict[str, str] = {
     "manage_pc_power": "发送电源控制",
     "manage_aria2_download": "查询下载进度",
     "manage_firewall_security": "查询安全防护",
+    "diagnose_system_health": "执行系统体检",
 }

@@ -110,8 +110,11 @@ def format_feishu_markdown(text: str) -> str:
             
             # C. 处理行内单反引号 `code` 转换为中性高亮标签
             converted = re.sub(r'(?<!`)`([^`\n]+?)`(?!`)', r"<text_tag color='neutral'>\1</text_tag>", converted)
-            
-            # D. 处理多余的连续空白换行
+
+            # D. 优化列表呼吸间距：确保列表项（• 或 - 或 1. 2.）之间空一行，杜绝条目挤压堆积
+            converted = re.sub(r'(?m)^([•\-]\s*|\*\s+|\d+\.\s*)([^\n]+)\r?\n(?=[•\-]\s*|\*\s+|\d+\.\s*)', r'\1\2\n\n', converted)
+
+            # E. 处理多余的连续空白换行（最多保留双换行即单个空行）
             converted = re.sub(r'\n{3,}', '\n\n', converted)
             
             result.append(converted)

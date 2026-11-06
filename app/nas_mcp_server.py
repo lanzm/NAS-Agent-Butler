@@ -33,6 +33,7 @@ from app.docker_client import get_docker_client
 from app.weather_calendar_helper import get_weather_calendar_summary
 from app.plugins import firewall_plugin, aria2_plugin, pc_power_plugin
 from app.url_security import fetch_public_url
+from app.doctor import SystemDoctor
 
 logger = logging.getLogger("butler.mcp.server")
 
@@ -62,10 +63,14 @@ SRE_ENGINEER_PROMPT = """你是一名博学、高效、严谨的家庭全能智�
    - 严禁使用任何级别的 Markdown 标题符号（严禁使用 #, ##, ### 等），小节一律使用加粗文本（如 **【核心推荐】** 或 **⚡ 处理器状态**）；
    - 严禁输出 Markdown 分割线（严禁使用 ---, ***, ___ 等）；
    - 严禁输出 Markdown 表格（|---|）；
-   - 列表统一使用 Emoji 或符号短横线（`•` 或 `-`）；
+   - 列表统一使用 Emoji 或符号短横线（`•` 或 `-`），且每个列表项之间必须空一行（换行后带回车），保持舒展易读，严禁条目紧贴堆叠；
    - 关键参数、型号、指标或容器名使用行内代码（如 `caddy`、`BCD-548`）包裹。
 
-5. 【语言与双语支持规范 (Bilingual Support)】：
+5. 【Aria2 离线下载操作准则】：
+   - 当用户询问 Aria2 下载状态、下载进度、任务详情、还有没有在下载、添加磁力/下载链接、暂停/恢复/删除任务时，必须优先且直接调用 `manage_aria2_download` 工具！
+   - 严禁通过读取 aria2-pro 容器日志 (get_container_logs / manage_docker_container) 来猜测或回答下载进度！
+
+6. 【语言与双语支持规范 (Bilingual Support)】：
    - 默认首选中文进行交互与诊断排版；
    - 若用户输入为英文（例如 "Check NAS status", "How are docker containers", "Restart caddy"），必须全流程以地道、专业的英文回答；
    - 若系统环境变量 DEFAULT_LANGUAGE=en，则所有主动报告、定时早报与卡片结论默认全量使用英文输出。
@@ -128,7 +133,7 @@ TOOLS_REGISTRY = [
     },
     {
         "name": "manage_docker_container",
-        "description": "通过只读 Docker API 查询容器状态、列出运行表、抽取尾部运行日志或查看容器详情。",
+        "description": "通过只读 Docker API 查询容器状态、列出运行表、抽取尾部运行日志或查看容器详情。注意：若用户询问 Aria2 下载状态、任务或速度，严禁调用本工具，必须直接调用 manage_aria2_download！",
         "parameters": {
             "type": "object",
             "properties": {
@@ -152,7 +157,7 @@ TOOLS_REGISTRY = [
     },
     {
         "name": "get_container_logs",
-        "description": "读取指定 Docker 容器的最新尾部运行日志（如读取 nas-backup 容器确认昨夜备份详情，或排查异常退出容器原因）。",
+        "description": "读取指定 Docker 容器的最新尾部运行日志（如读取 nas-backup 容器确认昨夜备份详情，或排查异常退出容器原因）。注意：若用户询问 Aria2 下载状态或进度，严禁调用本工具，必须直接调用 manage_aria2_download！",
         "parameters": {
             "type": "object",
             "properties": {
@@ -187,6 +192,15 @@ TOOLS_REGISTRY = [
                 }
             },
             "required": ["query"]
+        }
+    },
+    {
+        "name": "diagnose_system_health",
+        "description": "对 NAS 核心服务与依赖进行深度体检与故障自检（检查 Docker 守护进程、Aria2 RPC、PC 远程开机配置、天气接口及 AI 模型网关连通性与往返延迟）。当用户询问系统状态、配置是否正确、体检自检、或者遇到功能异常要求排查原因时调用。",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
         }
     },
     pc_power_plugin.TOOL_SPEC
@@ -389,6 +403,11 @@ def execute_manage_pc_power(args: Dict[str, Any]) -> Dict[str, Any]:
     """PC 电源网络控制 (纯 Python WOL 唤醒与远程关机)"""
     return pc_power_plugin.execute(args)
 
+def execute_diagnose_system_health(args: Dict[str, Any] = None) -> Dict[str, Any]:
+    """执行全能管家系统环境与依赖深度体检"""
+    doctor = SystemDoctor()
+    return doctor.diagnose()
+
 def execute_generate_daily_report() -> Dict[str, Any]:
     """生成全机健康巡检日报"""
     health = execute_get_system_health()
@@ -504,6 +523,7 @@ TOOL_DISPATCH_TABLE = {
     "manage_firewall_security": execute_manage_firewall_security,
     "search_web_info": execute_search_web_info,
     "manage_pc_power": execute_manage_pc_power,
+    "diagnose_system_health": lambda args: execute_diagnose_system_health(args),
 }
 
 
