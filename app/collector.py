@@ -201,7 +201,8 @@ class SystemCollector:
                 if health == "unhealthy":
                     alarms.append(f"容器 {c.name} 状态异常 (unhealthy)")
 
-                image_name = c.image.tags[0] if c.image.tags else c.image.short_id
+                # 直接从容器静态配置提取镜像名，避免 c.image 触发 N+1 次额外网络请求及镜像被删时的 404 崩溃
+                image_name = c.attrs.get("Config", {}).get("Image") or c.attrs.get("Image", "")[:12] or "unknown"
                 started_at = state.get("StartedAt", "")
                 uptime = calc_container_uptime(started_at) if is_running else "已停止"
                 containers.append({

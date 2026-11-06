@@ -22,6 +22,41 @@ class TestCollector(unittest.TestCase):
         self.assertEqual(human_bytes(int(1024 * 1024 * 1024 * 2.5)), "2.5GB")
         self.assertEqual(human_bytes(1024 ** 4), "1.0TB")
 
+    @patch("app.collector.get_docker_client")
+    def test_get_docker_containers_safe_image_lookup(self, mock_get_client):
+        """测试容器镜像被删（悬空/已清除）时，直接安全读取 attrs 且不触发 404 崩溃"""
+        mock_client = MagicMock()
+        mock_c1 = MagicMock()
+        mock_c1.name = "caddy"
+        mock_c1.status = "running"
+        mock_c1.attrs = {
+            "State": {"Status": "running", "StartedAt": "2026-11-06T10:00:00Z"},
+            "Config": {"Image": "caddy:2.8-alpine"}
+        }
+
+        # 模拟镜像已被 docker image prune 删掉的停止容器：c.image 如果被访问会抛异常
+        mock_c2 = MagicMock()
+        mock_c2.name = "old_orphaned_app"
+        mock_c2.status = "exited"
+        mock_c2.attrs = {
+            "State": {"Status": "exited", "StartedAt": ""},
+            "Config": {},
+            "Image": "sha256:abcdef1234567890"
+        }
+        type(mock_c2).image = property(lambda self: (_ for _ in ()).throw(Exception("404 ImageNotFound")))
+
+        mock_client.containers.list.return_value = [mock_c1, mock_c2]
+        mock_get_client.return_value = mock_client
+
+        collector = SystemCollector()
+        containers, alarms = collector.get_docker_containers()
+
+        self.assertEqual(len(containers), 2)
+        self.assertEqual(containers[0]["name"], "caddy")
+        self.assertEqual(containers[0]["image"], "caddy:2.8-alpine")
+        self.assertEqual(containers[1]["name"], "old_orphaned_app")
+        self.assertEqual(containers[1]["image"], "sha256:abcde")
+
     def test_calc_container_uptime_unstarted(self):
         """测试未启动容器的运行时间解析"""
         self.assertEqual(calc_container_uptime(""), "未启动")

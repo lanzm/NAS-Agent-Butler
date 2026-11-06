@@ -283,10 +283,11 @@ def execute_manage_docker_container(args: Dict[str, Any]) -> Dict[str, Any]:
             containers = client.containers.list(all=True)
             res = []
             for c in containers:
+                image_name = c.attrs.get("Config", {}).get("Image") or c.attrs.get("Image", "")[:12] or "unknown"
                 res.append({
                     "name": c.name,
                     "status": c.status,
-                    "image": c.image.tags[0] if c.image.tags else c.image.short_id,
+                    "image": image_name,
                     "created": c.attrs.get("Created", "")
                 })
             return {"status": "success", "total": len(res), "containers": res}
@@ -499,14 +500,6 @@ def _exec_get_container_logs(tool_args: Dict[str, Any]) -> Dict[str, Any]:
 def _exec_get_weather_calendar(tool_args: Dict[str, Any]) -> Dict[str, Any]:
     city_arg = tool_args.get("city")
     return get_weather_calendar_summary(city_arg)
-
-
-OPTIONAL_TOOL_ENABLED = {
-    "manage_aria2_download": aria2_plugin.is_enabled,
-    # Fail2ban actions need Docker exec endpoints, deliberately blocked by the proxy.
-    "manage_firewall_security": firewall_plugin.is_enabled,
-    "manage_pc_power": pc_power_plugin.is_enabled,
-}
 
 
 def get_enabled_tools() -> List[Dict[str, Any]]:
