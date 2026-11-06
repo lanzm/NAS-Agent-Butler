@@ -74,6 +74,11 @@ SRE_ENGINEER_PROMPT = """你是一名博学、高效、严谨的家庭全能智�
    - 默认首选中文进行交互与诊断排版；
    - 若用户输入为英文（例如 "Check NAS status", "How are docker containers", "Restart caddy"），必须全流程以地道、专业的英文回答；
    - 若系统环境变量 DEFAULT_LANGUAGE=en，则所有主动报告、定时早报与卡片结论默认全量使用英文输出。
+
+7. 【执行类操作防漂移原则 (Action Execution vs Information Retrieval)】：
+   - 你的控制能力严格受限于已注册的本地工具（NAS 运维、Aria2 离线下载、PC 远程开机/关机）；
+   - 搜索引擎（`search_web_info`）用于获取外部知识、实时事实、百科、数码推荐与资讯问答，支持按需自由调用；
+   - 严禁用搜索引擎来“冒充执行”本地硬件控制或系统变更动作（如用户要求“开机”、“关机”、“开空调”等动作控制时，若缺少对应工具，必须直接告知用户管家尚未接入该设备或缺少对应插件，严禁通过搜索网页或展示命令行来应付用户的执行请求）！
 """
 
 PROMPTS_REGISTRY = {
@@ -182,7 +187,7 @@ TOOLS_REGISTRY = [
     firewall_plugin.TOOL_SPEC,
     {
         "name": "search_web_info",
-        "description": "通过必应搜索与网页正文清洗检索外部互联网实时动态、权威新闻、技术故障等。注意：返回内容为底层参考事实，你拿到本工具结果后，必须紧扣用户的原始问题进行归纳和提炼，直接给出针对性的最终结论，严禁机械罗列原始条目与外部长链接！",
+        "description": "通过必应搜索与网页正文清洗检索外部互联网实时动态、权威新闻、技术知识、数码常识等。注意：仅用于信息与知识检索，严禁在用户请求控制本地硬件或设备时拿本工具冒充执行！返回内容为底层参考事实，你拿到本工具结果后，必须紧扣用户的原始问题进行归纳和提炼，直接给出针对性的最终结论，严禁机械罗列原始条目与外部长链接！",
         "parameters": {
             "type": "object",
             "properties": {
@@ -505,12 +510,8 @@ OPTIONAL_TOOL_ENABLED = {
 
 
 def get_enabled_tools() -> List[Dict[str, Any]]:
-    """Return only tools whose optional integration is configured and enabled."""
-    return [
-        tool for tool in TOOLS_REGISTRY
-        if tool["name"] not in OPTIONAL_TOOL_ENABLED
-        or OPTIONAL_TOOL_ENABLED[tool["name"]]()
-    ]
+    """返回所有已注册的核心 MCP 工具（方案 A：保持全量能力常驻，避免因隐藏工具导致大模型规划漂移与外网乱搜）。"""
+    return list(TOOLS_REGISTRY)
 
 
 TOOL_DISPATCH_TABLE = {

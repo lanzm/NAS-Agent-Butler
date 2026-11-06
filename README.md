@@ -209,6 +209,18 @@ docker compose logs -f
 
 ---
 
+### 步骤 4：一键环境体检（System Doctor · 推荐）
+
+部署完成后，推荐在容器内执行自检工具，一键校验所有核心依赖连通性与模型网关延迟：
+
+```bash
+docker exec -it feishu-bot python -m app.doctor
+```
+
+> 💡 **日常使用**：日常在飞书聊天框中，也可直接向机器人发送 **“体检一下系统环境”** 或 **“做个自检”**，管家将通过 MCP 工具输出排版优美、带耗时评级与红绿灯状态的专属体检卡片。
+
+---
+
 ## ✨ 核心特点
 
 | 特性 | 说明 | 带来的价值 |
@@ -249,11 +261,15 @@ graph TD
             AIAgent <-->|"JSON-RPC 2.0"| MCPClient["mcp_client.py"]
             MCPClient <-->|"标准输入输出管道"| MCPServer["nas_mcp_server.py"]
             
-            MCPServer --> Tool1["📊 系统硬件与负载探针"]
-            MCPServer --> Tool2["🐳 Docker 容器只读状态与日志查询"]
-            MCPServer --> Tool3["💾 磁盘 SMART 与坏道深度巡检"]
-            MCPServer --> Tool4["🌤️ Wttr 免 Key 实时天气与万年历"]
-            MCPServer --> Tool5["⚡ 局域网 PC 远程 WOL 开机唤醒"]
+            MCPServer --> Tool1["📊 硬件与负载指标 (get_system_health)"]
+            MCPServer --> Tool2["🩺 System Doctor 自检 (diagnose_system_health)"]
+            MCPServer --> Tool3["🐳 Docker 状态与日志 (manage_docker_container)"]
+            MCPServer --> Tool4["💾 磁盘 SMART 与坏道巡检 (manage_system_storage)"]
+            MCPServer --> Tool5["🌤️ 免 Key 天气与万年历 (get_weather_calendar)"]
+            MCPServer --> Tool6["⚡ 局域网 PC 远程 WOL 开机 (manage_pc_power)"]
+            MCPServer --> Tool7["📥 Aria2 离线下载监控 (manage_aria2_download)"]
+            MCPServer --> Tool8["🛡️ Fail2ban 防火墙安全 (manage_firewall_security)"]
+            MCPServer --> Tool9["🔍 必应搜索与网页正文清洗 (search_web_info)"]
         end
         
         MCPServer -->|"/var/run/docker.sock"| DockerDaemon[("Docker Engine")]
@@ -281,6 +297,11 @@ graph TD
 | `MEM_THRESHOLD` | `90` | 内存报警使用率阈值 (%) | 否 |
 | `CPU_TEMP_THRESHOLD` | `80` | CPU 温度报警阈值 (°C) | 否 |
 | `FEISHU_RECEIVE_ID` | 空 | 每日定时主动推送目标 open_id (私聊机器人后自动记录绑定) | 建议填入 |
+| `ENABLE_PC_POWER` | `false` | 是否开启 PC 局域网远程电源管理插件 (WOL 唤醒/关机) | 否 |
+| `TARGET_PC_MAC` | 空 | 目标被唤醒电脑物理网卡 MAC 地址 (格式如 `AA:BB:CC:DD:EE:FF`) | 启用开机时必填 |
+| `ARIA2_RPC_URL` | 空 | Aria2 离线下载器 RPC 接口地址 (如 `http://127.0.0.1:6800/jsonrpc`) | 启用下载查询时必填 |
+| `ARIA2_RPC_SECRET` | 空 | Aria2 RPC 访问 Token 密钥 (无密码留空) | 否 |
+| `ENABLE_FIREWALL` | `false` | 是否启用 Fail2ban 防火墙安全封禁查询插件 | 否 |
 
 ---
 
@@ -331,6 +352,7 @@ graph TD
 1. **限制 Docker API**：Compose 通过不发布端口的内部网络访问 `docker-socket-proxy`，应用不直接挂载宿主机 Docker socket。代理仅开放容器、镜像和基础信息读取接口（`POST=0`）；Docker socket 的 `:ro` 挂载本身不提供 API 只读权限。
 2. **限制工具能力**：不向模型提供通用 `exec` 或 `bash` 工具。容器重启、Fail2ban Docker exec 与 Aria2 新增下载因当前权限边界而禁用；网页抓取仅允许连接经校验的公网目标。
 3. **脱敏保护网**：所有流经 AI 的指标、容器日志与输出内容均经过 [`sanitizer.py`](file:///D:/program/my/nas-agent-butler-open/app/sanitizer.py) 正则脱敏过滤，密码与 Key 不会离开内网。
+4. **防规划漂移护栏（Anti-Drift Guardrail）**：严格区分“本地动作执行”与“外部事实检索”。本地设备/硬件控制仅允许通过已注册的受限工具调度；对于未接入的智能家居或外部设备，管家会诚实告知缺少插件，杜绝调用搜索引擎“冒充执行”本地动作，根绝无意义外网漫游、上下文膨胀与超时。
 
 ---
 

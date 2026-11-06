@@ -212,6 +212,18 @@ When you see `[INFO] connected to wss://msg-frontier.feishu.cn/ws/v2`, your bot 
 
 ---
 
+### Step 4: One-Click System Doctor Verification (Recommended)
+
+After deployment, run the built-in diagnostic tool to verify all component dependencies and AI Gateway latency in one step:
+
+```bash
+docker exec -it feishu-bot python -m app.doctor
+```
+
+> 💡 **Everyday Usage**: You can also ask your bot **"Run a system health check"** or **"Diagnose system environment"** in Feishu/Lark at any time. The bot will invoke the MCP tool and reply with a color-coded diagnostic card.
+
+---
+
 ## ✨ Core Highlights
 
 | Feature | Description | Value |
@@ -252,11 +264,15 @@ graph TD
             AIAgent <-->|"JSON-RPC 2.0"| MCPClient["mcp_client.py"]
             MCPClient <-->|"Standard I/O Pipes"| MCPServer["nas_mcp_server.py"]
             
-            MCPServer --> Tool1["📊 System & Hardware Metrics"]
-            MCPServer --> Tool2["🐳 Docker Container Health & Restart"]
-            MCPServer --> Tool3["💾 Disk SMART & Bad Sector Inspection"]
-            MCPServer --> Tool4["🌤️ Wttr Real-time Weather & Calendar"]
-            MCPServer --> Tool5["⚡ Local LAN Wake-on-LAN (WOL)"]
+            MCPServer --> Tool1["📊 Metrics & Load (get_system_health)"]
+            MCPServer --> Tool2["🩺 System Doctor (diagnose_system_health)"]
+            MCPServer --> Tool3["🐳 Docker Containers (manage_docker_container)"]
+            MCPServer --> Tool4["💾 Storage & Disk SMART (manage_system_storage)"]
+            MCPServer --> Tool5["🌤️ Keyless Weather & Calendar (get_weather_calendar)"]
+            MCPServer --> Tool6["⚡ LAN Wake-on-LAN (manage_pc_power)"]
+            MCPServer --> Tool7["📥 Aria2 Downloads (manage_aria2_download)"]
+            MCPServer --> Tool8["🛡️ Firewall Security (manage_firewall_security)"]
+            MCPServer --> Tool9["🔍 Bing Web Search & Cleaning (search_web_info)"]
         end
         
         MCPServer -->|"/var/run/docker.sock"| DockerDaemon[("Docker Engine")]
@@ -284,22 +300,26 @@ graph TD
 | `MEM_THRESHOLD` | `90` | Memory usage alert threshold (%) | No |
 | `CPU_TEMP_THRESHOLD` | `80` | CPU temperature alert threshold (°C) | No |
 | `FEISHU_RECEIVE_ID` | Empty | Default target user open_id for proactive pushes | Recommended |
+| `ENABLE_PC_POWER` | `false` | Enable PC LAN remote power management (WOL wake/shutdown) | No |
+| `TARGET_PC_MAC` | None | Target PC network interface MAC address (e.g. `AA:BB:CC:DD:EE:FF`) | Required if WOL enabled |
+| `ARIA2_RPC_URL` | None | Aria2 RPC server endpoint (e.g. `http://127.0.0.1:6800/jsonrpc`) | Required for Aria2 |
+| `ARIA2_RPC_SECRET` | None | Aria2 RPC token secret | No |
+| `ENABLE_FIREWALL` | `false` | Enable Fail2ban firewall ban status query plugin | No |
 
 ---
 
-## ⏰ Declarative Scheduled Tasks (`config/schedules.json`)
+## ⏰ Declarative Scheduled Tasks (`config/schedules.yaml`)
 
-NAS-Agent-Butler features a prompt-driven declarative scheduler. You can customize scheduled agent tasks in `config/schedules.json` without modifying any code:
+NAS-Agent-Butler features a prompt-driven declarative scheduler. You can customize scheduled agent tasks in `config/schedules.yaml` without modifying any code:
 
-```json
-[
-  {
-    "name": "🌅 Daily SRE & Life Briefing",
-    "time": "08:00",
-    "enabled": true,
-    "prompt": "Analyze host health metrics, Docker container topology, and today's weather. Output a concise, friendly morning briefing under 200 words."
-  }
-]
+```yaml
+# Daily fixed-time report: Life & SRE briefing
+- name: "🌅 Daily SRE & Life Briefing"
+  time: "08:00"
+  enabled: true
+  prompt: |
+    Analyze host health metrics, Docker container topology, and today's weather.
+    Output a concise, friendly morning briefing under 200 words.
 ```
 
 ---
@@ -320,6 +340,7 @@ The system adheres strictly to the Model Context Protocol (MCP). To add custom d
 1. **Read-Only Mounts**: `docker-compose.yml` mounts `/proc` and `/sys` with `:ro` (read-only) to protect host integrity.
 2. **Zero Arbitrary Shell Execution**: The AI does not have access to an unrestricted bash/exec tool; all actions are mediated through typed MCP tools with strict parameters.
 3. **Data Sanitization**: All metrics and container logs pass through [`sanitizer.py`](file:///D:/program/my/nas-agent-butler-open/app/sanitizer.py), ensuring credentials and tokens never leave your network.
+4. **Anti-Drift Guardrail**: Strict boundary separating local action execution from external information retrieval. Device/hardware operations are restricted strictly to registered local MCP tools. If a device or plugin is not integrated, the bot honestly indicates it rather than hijacking web search to fake execution, preventing context bloat and query timeouts.
 
 ---
 
