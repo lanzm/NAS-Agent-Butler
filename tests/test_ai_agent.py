@@ -83,6 +83,74 @@ class TestAIAgentChat(unittest.TestCase):
             self.assertIn("你好", res["text"])
             self.assertIn("trace_tag", res)
 
+    @patch("app.ai_agent.MCPClient")
+    def test_chat_tool_execution_and_callback_flow(self, mock_mcp_cls):
+        """测试 2 轮对话闭环：第 1 轮产生工具调用 -> MCP 执行 -> 第 2 轮提炼结论"""
+        mock_instance = mock_mcp_cls.return_value
+        mock_instance.get_prompt.return_value = "system prompt"
+        mock_instance.get_openai_tools.return_value = [
+            {"type": "function", "function": {"name": "get_system_health"}}
+        ]
+        mock_instance.call_tool.return_value = {"cpu_usage": 15.0, "status": "healthy"}
+
+        agent = AIAgent()
+        agent.api_key = "test_key"
+        agent.api_base = "https://api.test.com"
+
+        callback_statuses = []
+        def dummy_status_cb(st):
+            callback_statuses.append(st)
+
+        # 模拟第 1 轮返回 tool_calls，第 2 轮返回文字总结
+        round1_msg = {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{
+                "id": "call_123",
+                "type": "function",
+                "function": {
+                    "name": "get_system_health",
+                    "arguments": "{}"
+                }
+            }]
+        }
+        round2_msg = {
+            "role": "assistant",
+            "content": "NAS 系统当前各项硬件指标正常，CPU 仅 15%。"
+        }
+
+        call_model_returns = [
+            (round1_msg, {"total_tokens": 80}, None),
+            (round2_msg, {"total_tokens": 120}, None)
+        ]
+
+        with patch.object(agent, "_call_model", side_effect=call_model_returns):
+            res = agent.chat("检查一下系统健康", status_callback=dummy_status_cb)
+            self.assertIn("CPU 仅 15%", res["text"])
+            mock_instance.call_tool.assert_called_once_with("get_system_health", {})
+            # 验证状态回调按序接收到：工具执行提示 -> 提炼结论提示
+            from app.constants.status import TaskStatus
+            self.assertIn("采集系统指标", callback_statuses)
+            self.assertIn(TaskStatus.GENERATE_REPORT, callback_statuses)
+            # 验证 TraceTag 中记录了工具名
+            self.assertIn("get_system_health", res["trace_tag"])
+
+    @patch("app.ai_agent.MCPClient")
+    def test_chat_api_network_error_graceful_reply(self, mock_mcp_cls):
+        """测试上游模型 API 发生异常时，友好降级返回错误信息而不是崩溃抛异常"""
+        mock_instance = mock_mcp_cls.return_value
+        mock_instance.get_prompt.return_value = "system prompt"
+        mock_instance.get_openai_tools.return_value = []
+
+        agent = AIAgent()
+        agent.api_key = "test_key"
+        agent.api_base = "https://api.test.com"
+
+        with patch.object(agent, "_call_model", return_value=(None, None, "Connection timeout to model endpoint")):
+            res = agent.chat("测试提问")
+            self.assertIn("AI 模型服务响应异常", res["text"])
+            self.assertIn("Connection timeout", res["text"])
+
 
 if __name__ == "__main__":
     unittest.main()

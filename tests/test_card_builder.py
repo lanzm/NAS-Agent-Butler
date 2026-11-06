@@ -38,6 +38,32 @@ class TestCardBuilder(unittest.TestCase):
             "• Docker 容器生态：14个运行中。\n\n• Aria2 离线下载：正常。\n\n• PC 唤醒：已就绪。"
         )
 
+    def test_format_feishu_markdown_numbered_and_hyphen_list_spacing(self):
+        """测试有序列表 (1. 2.) 与破折号列表 (- ) 自动扩展呼吸间距"""
+        text = "1. 第一步检查光纤\n2. 第二步重启软路由\n3. 第三步拨测网络"
+        res = format_feishu_markdown(text)
+        self.assertEqual(
+            res,
+            "1. 第一步检查光纤\n\n2. 第二步重启软路由\n\n3. 第三步拨测网络"
+        )
+
+        hyphen_text = "- CPU 占用 12%\n- 内存占用 34%\n- 磁盘占用 56%"
+        hyphen_res = format_feishu_markdown(hyphen_text)
+        self.assertEqual(
+            hyphen_res,
+            "- CPU 占用 12%\n\n- 内存占用 34%\n\n- 磁盘占用 56%"
+        )
+
+    def test_format_feishu_markdown_headings_to_bold(self):
+        """测试各级 Markdown 标题转换为加粗文本，防止在飞书卡片中裸露 # 符号"""
+        text = "# 结论汇总\n## 硬件概况\n### 容器集群\n#### 网络拓扑"
+        res = format_feishu_markdown(text)
+        self.assertIn("**结论汇总**", res)
+        self.assertIn("**硬件概况**", res)
+        self.assertIn("**容器集群**", res)
+        self.assertIn("**网络拓扑**", res)
+        self.assertNotIn("#", res)
+
     def test_clean_ai_content_json_stripping(self):
         """测试剥离大模型返回的 JSON 外壳"""
         raw = '{"text": "今日天气晴朗，系统运行平稳"}'

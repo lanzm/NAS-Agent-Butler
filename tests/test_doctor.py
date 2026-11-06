@@ -5,7 +5,8 @@ tests/test_doctor.py - SystemDoctor 系统自检核心逻辑与各检查项测�
 
 import unittest
 from unittest.mock import patch, MagicMock
-from app.doctor import SystemDoctor
+import requests
+from app.doctor import SystemDoctor, format_cli_report
 
 
 class TestSystemDoctor(unittest.TestCase):
@@ -74,6 +75,71 @@ class TestSystemDoctor(unittest.TestCase):
             res = self.doctor.check_ai_gateway()
             self.assertEqual(res["status"], "ok")
             self.assertIn("latency_ms", res)
+
+    @patch("app.doctor.pc_power_plugin.is_enabled", return_value=True)
+    def test_pc_power_check_invalid_mac(self, _):
+        with patch("app.doctor.settings") as mock_settings:
+            mock_settings.target_pc_mac = "12:34:invalid"
+            res = self.doctor.check_pc_power()
+            self.assertEqual(res["status"], "warning")
+            self.assertIn("格式非法", res["message"])
+
+    @patch("app.doctor.requests.get")
+    def test_ai_gateway_timeout_and_error(self, mock_get):
+        # 1. 超时异常
+        mock_get.side_effect = requests.Timeout()
+        with patch("app.doctor.settings") as mock_settings:
+            mock_settings.openai_api_base = "https://gemini.example.com/v1beta/openai"
+            mock_settings.ai_api_key = "test_key"
+            res = self.doctor.check_ai_gateway()
+            self.assertEqual(res["status"], "error")
+            self.assertIn("超时", res["message"])
+
+        # 2. 连接重置 / 握手异常
+        mock_get.side_effect = Exception("Connection refused")
+        with patch("app.doctor.settings") as mock_settings:
+            mock_settings.openai_api_base = "https://gemini.example.com/v1beta/openai"
+            mock_settings.ai_api_key = "test_key"
+            res = self.doctor.check_ai_gateway()
+            self.assertEqual(res["status"], "error")
+            self.assertIn("网络握手失败", res["message"])
+
+    def test_format_cli_report_healthy(self):
+        diag = {
+            "overall_status": "healthy",
+            "summary": "所有服务运行正常",
+            "checks": {
+                "docker": {"status": "ok", "message": "Docker 守护进程连通"},
+                "ai_gateway": {"status": "ok", "message": "模型端点往返延迟 120ms"}
+            },
+            "suggestions": []
+        }
+        report = format_cli_report(diag)
+        self.assertIn("综合评定: [HEALTHY]", report)
+        self.assertIn("PASS", report)
+        self.assertIn("Docker 守护进程连通", report)
+
+    def test_format_cli_report_with_errors_and_suggestions(self):
+        diag = {
+            "overall_status": "error",
+            "summary": "发现 1 项错误，1 项警告",
+            "checks": {
+                "docker": {"status": "error", "message": "Docker 连接断开"},
+                "pc_power": {"status": "warning", "message": "MAC 格式不规范"},
+                "aria2": {"status": "disabled", "message": "未启用"}
+            },
+            "suggestions": [
+                "检查宿主机 docker.sock 挂载及容器权限",
+                "请在 .env 中正确配置 TARGET_PC_MAC 地址"
+            ]
+        }
+        report = format_cli_report(diag)
+        self.assertIn("综合评定: [ERROR]", report)
+        self.assertIn("FAIL", report)
+        self.assertIn("WARN", report)
+        self.assertIn("OFF", report)
+        self.assertIn("修复建议:", report)
+        self.assertIn("检查宿主机 docker.sock", report)
 
     def test_run_all_diagnosis(self):
         with patch.object(self.doctor, "check_docker", return_value={"status": "ok"}):
