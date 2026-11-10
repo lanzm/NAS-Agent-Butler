@@ -6,6 +6,7 @@ app/doctor.py - 全能管家系统环境与依赖自检引擎 (System Doctor)
 """
 
 import sys
+import json
 import time
 import socket
 import logging
@@ -256,4 +257,8 @@ if __name__ == "__main__":
             pass
     doctor = SystemDoctor()
     report = doctor.diagnose()
-    print(format_cli_report(report))
+    if "--json" in sys.argv:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    else:
+        print(format_cli_report(report))
+    sys.exit(1 if report.get("overall_status") == "error" else 0)

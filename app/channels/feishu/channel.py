@@ -476,8 +476,13 @@ class FeishuChannel(BaseChannel):
                 self.receive_id = sender_id
                 logger.info(f"已自动绑定当前用户的 open_id: {self.receive_id}")
 
+            try:
+                content_dict = json.loads(msg.content) if isinstance(msg.content, str) else (msg.content or {})
+            except Exception as e:
+                logger.warning(f"解析飞书消息 content JSON 失败: {e}, raw={msg.content}")
+                content_dict = {}
+
             if msg.message_type == "text":
-                content_dict = json.loads(msg.content)
                 raw_text = content_dict.get("text", "").strip()
                 if "@_user_" in raw_text:
                     raw_text = raw_text.split(" ", 1)[-1].strip() if " " in raw_text else raw_text
@@ -490,7 +495,6 @@ class FeishuChannel(BaseChannel):
                 ).start()
 
             elif msg.message_type == "image":
-                content_dict = json.loads(msg.content)
                 image_key = content_dict.get("image_key", "").strip()
                 logger.info(f"收到用户图片消息: image_key={image_key}")
                 if image_key:
@@ -501,7 +505,6 @@ class FeishuChannel(BaseChannel):
                     ).start()
 
             elif msg.message_type == "audio":
-                content_dict = json.loads(msg.content)
                 file_key = content_dict.get("file_key", "").strip()
                 logger.info(f"收到用户语音消息: file_key={file_key}")
                 if file_key:
@@ -512,7 +515,6 @@ class FeishuChannel(BaseChannel):
                     ).start()
 
             elif msg.message_type == "post":
-                content_dict = json.loads(msg.content)
                 raw_text, image_key = self._extract_post_content(content_dict)
                 logger.info(f"收到用户富文本消息: text='{raw_text[:40]}', image_key={image_key}")
                 if image_key:

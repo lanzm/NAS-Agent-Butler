@@ -151,6 +151,20 @@ class TestSystemDoctor(unittest.TestCase):
                         self.assertIn("checks", report)
                         self.assertIn("summary", report)
 
+    def test_doctor_json_output_format(self):
+        """测试 SystemDoctor 诊断结果可直接被标准 json.dumps 序列化，支持 --json 输出"""
+        import json
+        with patch.object(self.doctor, "check_docker", return_value={"status": "ok"}):
+            with patch.object(self.doctor, "check_aria2", return_value={"status": "disabled", "message": "未配置"}):
+                with patch.object(self.doctor, "check_pc_power", return_value={"status": "ok"}):
+                    with patch.object(self.doctor, "check_ai_gateway", return_value={"status": "ok", "latency_ms": 120}):
+                        report = self.doctor.diagnose()
+                        dumped = json.dumps(report, ensure_ascii=False, indent=2)
+                        parsed = json.loads(dumped)
+                        self.assertEqual(parsed["overall_status"], "healthy")
+                        self.assertIn("checks", parsed)
+                        self.assertIn("docker", parsed["checks"])
+
 
 if __name__ == "__main__":
     unittest.main()

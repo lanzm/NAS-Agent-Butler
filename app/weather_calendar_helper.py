@@ -211,7 +211,7 @@ def get_wttr_weather(city: str = None) -> Dict[str, Any]:
     req = urllib.request.Request(url, headers={"User-Agent": "curl/7.68.0"})
 
     try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=3) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             curr = data.get("current_condition", [{}])[0]
             today = data.get("weather", [{}])[0]
@@ -260,10 +260,10 @@ def get_wttr_weather(city: str = None) -> Dict[str, Any]:
         return {
             "city": query_city,
             "status": "fallback",
-            "condition": "多云",
-            "temp_range": "20°C ~ 27°C",
-            "advice": "天气舒适，祝您今日心情愉悦！",
-            "formatted_weather": f"{query_city}今日天气舒适，祝您今天工作顺利！"
+            "condition": "数据暂离线",
+            "temp_range": "--",
+            "advice": "实时天气接口响应超时，出门请注意观察室外天气。",
+            "formatted_weather": f"{query_city}实时天气数据暂离线，出门建议注意关注户外实际天气变化。"
         }
 
 

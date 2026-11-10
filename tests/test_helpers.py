@@ -15,11 +15,26 @@ from app.sanitizer import sanitize_text
 class TestWeatherCalendarHelper(unittest.TestCase):
     """测试天气与生活日历助手"""
 
-    def test_weather_city_sanitization(self):
+    @patch("urllib.request.urlopen")
+    def test_weather_city_sanitization(self, mock_urlopen):
+        mock_urlopen.side_effect = Exception("network test mock")
         res = get_wttr_weather("../../etc/passwd;curl%20evil.com")
         self.assertNotIn("..", res["city"])
         self.assertNotIn("/", res["city"])
         self.assertNotIn(";", res["city"])
+        self.assertEqual(res["status"], "fallback")
+        self.assertEqual(res["temp_range"], "--")
+        self.assertIn("数据暂离线", res["condition"])
+
+    @patch("urllib.request.urlopen")
+    def test_weather_honest_fallback_on_network_error(self, mock_urlopen):
+        """测试天气接口异常或断网时，诚实降级提示而非生成虚假气温幻觉"""
+        mock_urlopen.side_effect = TimeoutError("Connection timed out")
+        res = get_wttr_weather("北京")
+        self.assertEqual(res["status"], "fallback")
+        self.assertEqual(res["temp_range"], "--")
+        self.assertIn("数据暂离线", res["condition"])
+        self.assertIn("超时", res["advice"])
 
     def test_calendar_info_integration(self):
         cal = get_calendar_info()

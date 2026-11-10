@@ -243,6 +243,7 @@ class AIAgent:
 
                     trace.finish()
                     self.history.append({"role": "assistant", "content": reply_content})
+                    self._trim_history()
                     trace.log_trace_summary()
                     return {"text": reply_content, "trace_tag": trace.get_summary_tag(), "trace_id": trace.trace_id}
 
