@@ -276,9 +276,13 @@ class InternalNotifyHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/notify":
             try:
-                content_length = int(self.headers.get('Content-Length', 0))
-                body = self.rfile.read(content_length).decode('utf-8')
-                data = json.loads(body)
+                raw_len = self.headers.get('Content-Length', 0)
+                try:
+                    content_length = min(max(0, int(raw_len)), 1024 * 1024)
+                except (ValueError, TypeError):
+                    content_length = 0
+                body = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else ""
+                data = json.loads(body) if body.strip() else {}
 
                 title = data.get("title", "🚨 安全网关告警")
                 content = data.get("content", "")

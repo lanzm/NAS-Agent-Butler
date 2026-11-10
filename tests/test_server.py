@@ -5,7 +5,7 @@ tests/test_server.py - 内部 Webhook 服务、健康检查端点与 Docker 客�
 
 import io
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from app.main import InternalNotifyHandler
 from app.docker_client import get_docker_client
 
@@ -43,6 +43,39 @@ class TestInternalWebhookServer(unittest.TestCase):
 
         handler.do_GET()
         handler.send_response.assert_called_with(404)
+
+    @patch("app.main.channel_manager.broadcast_card", return_value={"feishu": True})
+    def test_notify_post_success(self, mock_broadcast):
+        payload = b'{"title": "Test Alert", "content": "ok"}'
+        handler = InternalNotifyHandler.__new__(InternalNotifyHandler)
+        handler.path = "/notify"
+        handler.headers = {"Content-Length": str(len(payload))}
+        handler.rfile = io.BytesIO(payload)
+        handler.wfile = io.BytesIO()
+        handler.send_response = MagicMock()
+        handler.send_header = MagicMock()
+        handler.end_headers = MagicMock()
+
+        handler.do_POST()
+        handler.send_response.assert_called_with(200)
+        self.assertIn(b"ok", handler.wfile.getvalue())
+        mock_broadcast.assert_called_once()
+
+    @patch("app.main.channel_manager.broadcast_card", return_value={"feishu": True})
+    def test_notify_post_empty_body(self, mock_broadcast):
+        handler = InternalNotifyHandler.__new__(InternalNotifyHandler)
+        handler.path = "/notify"
+        handler.headers = {"Content-Length": "0"}
+        handler.rfile = io.BytesIO(b"")
+        handler.wfile = io.BytesIO()
+        handler.send_response = MagicMock()
+        handler.send_header = MagicMock()
+        handler.end_headers = MagicMock()
+
+        handler.do_POST()
+        handler.send_response.assert_called_with(200)
+        self.assertIn(b"ok", handler.wfile.getvalue())
+        mock_broadcast.assert_called_once()
 
 
 class TestDockerClient(unittest.TestCase):
