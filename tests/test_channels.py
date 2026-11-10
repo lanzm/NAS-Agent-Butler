@@ -74,5 +74,41 @@ class TestChannelManager(unittest.TestCase):
         self.assertFalse(ch2.stopped)
 
 
+class TestFeishuCardAction(unittest.TestCase):
+    """测试飞书卡片按钮动作响应与防超时异步解耦"""
+
+    def test_on_card_action_check_docker_async_fast_response(self):
+        from unittest.mock import MagicMock
+        from app.channels.feishu.channel import FeishuChannel
+
+        mock_handler = MagicMock()
+        mock_handler.handle_card_action.return_value = {
+            "toast": {"type": "info", "content": "已更新"},
+            "card": {"type": "template", "title": "result"}
+        }
+
+        channel = FeishuChannel(mock_handler)
+        channel.patch_card = MagicMock(return_value=True)
+
+        # Mock 带有 open_message_id 的卡片触发事件
+        mock_data = MagicMock()
+        mock_data.event.action.value = {"action": "check_docker"}
+        mock_data.event.context.open_message_id = "om_12345678"
+
+        resp = channel._on_card_action(mock_data)
+        self.assertIsNotNone(resp)
+        self.assertTrue(hasattr(resp, "toast") or hasattr(resp, "card") or hasattr(resp, "d"))
+
+        # 校验 Toast 符合 I18N 规范且字数 <= 6 字约束
+        from app.card_builder import get_i18n
+        expected_toast = get_i18n("toast_docker_analyzing", "🐳 正在排查中")
+        toast_dict = getattr(resp, "toast", None) or (getattr(resp, "d", {}) or {}).get("toast")
+        if isinstance(toast_dict, dict):
+            toast_content = toast_dict.get("content", "")
+            self.assertEqual(toast_content, expected_toast)
+            clean_text = toast_content.replace("🐳", "").strip()
+            self.assertLessEqual(len(clean_text), 6)
+
+
 if __name__ == "__main__":
     unittest.main()

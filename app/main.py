@@ -133,6 +133,17 @@ def load_scheduled_tasks() -> list:
     ]
 
 
+def check_broadcast_delivery(results: Dict[str, bool], context_name: str):
+    """检查广播送达状态，未送达且缺少接收者时输出针对性操作指引"""
+    if not results or not any(results.values()):
+        logger.warning(
+            f"⚠️ [{context_name}] 广播推送未成功送达任何目标用户！"
+            f"主要原因：系统尚未绑定目标用户的 open_id。"
+            f"【操作指引】：请在飞书中直接向机器人发送任意问候消息（管家将全自动记忆绑定您的 open_id 并完成闭环），"
+            f"或在 .env 中显式指定 FEISHU_RECEIVE_ID=ou_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx。"
+        )
+
+
 def execute_scheduled_agent_task(task_name: str, prompt: str):
     """触发定时 Agent 任务：由大模型自主调用 MCP 工具链并向所有活跃通道广播推送"""
     logger.info(f"⏰ [定时任务触发] 正在执行: [{task_name}]")
@@ -151,6 +162,7 @@ def execute_scheduled_agent_task(task_name: str, prompt: str):
         # 统一向所有激活的通道分发广播
         results = channel_manager.broadcast_card(card)
         logger.info(f"✅ 定时任务 [{task_name}] 广播推送完成: {results}")
+        check_broadcast_delivery(results, task_name)
     except Exception as e:
         logger.error(f"❌ 定时任务 [{task_name}] 执行异常: {e}")
 
@@ -191,7 +203,8 @@ def run_health_check_task(task_config: dict):
                     else:
                         card = build_status_card(data)
 
-                    channel_manager.broadcast_card(card)
+                    res = channel_manager.broadcast_card(card)
+                    check_broadcast_delivery(res, f"告警推送-{task_name}")
                     last_alarm_time = now
                     prev_alarm_state = True
             else:
@@ -201,7 +214,8 @@ def run_health_check_task(task_config: dict):
                         card = build_status_card(data)
                         card["header"]["template"] = "green"
                         card["header"]["title"]["content"] = "✅ NAS 运行指标恢复正常"
-                        channel_manager.broadcast_card(card)
+                        res = channel_manager.broadcast_card(card)
+                        check_broadcast_delivery(res, f"恢复通知-{task_name}")
                     prev_alarm_state = False
     except Exception as e:
         logger.error(f"[{task_name}] 巡检异常: {e}")
@@ -298,6 +312,7 @@ class InternalNotifyHandler(BaseHTTPRequestHandler):
 
                 # 向所有通道分发此内部告警
                 results = channel_manager.broadcast_card(card)
+                check_broadcast_delivery(results, f"内部通知-{title}")
 
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')

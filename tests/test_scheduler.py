@@ -165,6 +165,15 @@ class TestScheduler(unittest.TestCase):
         self.assertIn("智能诊断巡检", card["header"]["title"]["content"])
         self.assertIn("ffmpeg 转码", str(card))
 
+    def test_check_broadcast_delivery_warning(self):
+        """测试未送达且缺少接收者时的智能诊断引导日志输出"""
+        from app.main import check_broadcast_delivery
+
+        with self.assertLogs("butler", level="WARNING") as cm:
+            check_broadcast_delivery({"feishu": False}, "晨报任务")
+            self.assertTrue(any("FEISHU_RECEIVE_ID" in msg for msg in cm.output))
+            self.assertTrue(any("尚未绑定目标用户" in msg for msg in cm.output))
+
 
 if __name__ == "__main__":
     unittest.main()

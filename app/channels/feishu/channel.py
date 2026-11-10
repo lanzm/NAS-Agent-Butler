@@ -35,12 +35,13 @@ from app.card_builder import (
     build_loading_card,
     build_ai_response_card,
     build_message_card,
-    format_feishu_markdown
+    format_feishu_markdown,
+    get_i18n
 )
 from app.audio_transcriber import transcribe_audio_with_gemini
 
 from app.config import settings
-from app.constants import TaskStatus
+from app.constants import TaskStatus, TOOL_STATUS_MAP
 
 logger = logging.getLogger("butler.feishu")
 
@@ -538,6 +539,32 @@ class FeishuChannel(BaseChannel):
         try:
             action_val = data.event.action.value
             logger.info(f"收到卡片按钮动作: {action_val}")
+
+            act = action_val.get("action") if isinstance(action_val, dict) else ""
+            open_msg_id = ""
+            try:
+                open_msg_id = getattr(getattr(data.event, "context", None), "open_message_id", "") or ""
+            except Exception:
+                pass
+
+            # 针对耗时较长可能贴近飞书 3 秒超时的 AI 诊断类动作（如 check_docker），开启异步解耦防超时
+            if act == "check_docker" and open_msg_id:
+                loading_card = build_loading_card(stage_text=TOOL_STATUS_MAP.get("manage_docker_container", "查询容器状态"))
+
+                def _async_docker_inspect():
+                    try:
+                        res = self.action_handler.handle_card_action(action_val)
+                        if isinstance(res, dict) and "card" in res:
+                            self.patch_card(open_msg_id, res["card"])
+                    except Exception as ex:
+                        logger.error(f"异步处理容器深度检查失败: {ex}")
+
+                threading.Thread(target=_async_docker_inspect, daemon=True, name="AsyncCardAction").start()
+                return P2CardActionTriggerResponse(d={
+                    "toast": {"type": "info", "content": get_i18n("toast_docker_analyzing", "🐳 正在排查中")},
+                    "card": loading_card
+                })
+
             res_dict = self.action_handler.handle_card_action(action_val)
             return P2CardActionTriggerResponse(d=res_dict)
         except Exception as e:
