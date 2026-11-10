@@ -71,6 +71,18 @@ class TestCardBuilder(unittest.TestCase):
         self.assertIn("今日天气晴朗，系统运行平稳", cleaned)
         self.assertNotIn('{"text":', cleaned)
 
+    def test_clean_ai_content_think_tag_stripping(self):
+        """测试剥离推理模型输出的内部思考标签 <think> 与 <thought>"""
+        raw_think = "<think>\n用户的需求是查看天气，需要直接给出结论。\n</think>今日北京晴朗，气温 15°C。"
+        cleaned_think = clean_ai_content(raw_think)
+        self.assertEqual(cleaned_think, "今日北京晴朗，气温 15°C。")
+        self.assertNotIn("<think>", cleaned_think)
+        self.assertNotIn("用户的需求", cleaned_think)
+
+        raw_thought = "<thought>分析中...</thought>已完成全部诊断。"
+        cleaned_thought = clean_ai_content(raw_thought)
+        self.assertEqual(cleaned_thought, "已完成全部诊断。")
+
     def test_build_status_card_normal(self):
         """测试正常状态下的系统卡片（蓝色表头，无告警）"""
         data = {

@@ -462,8 +462,8 @@ def execute_generate_daily_report() -> Dict[str, Any]:
             report_lines.append("- ✅ 防火墙状态良好，无误封或积压攻击源。")
     else:
         msg = firewall_res.get('message', '')
-        if "未配置启用" in msg:
-            report_lines.append("- 💤 Fail2ban 防火墙未配置启用（可选）")
+        if "未配置启用" in msg or "策略禁用" in msg or "最小权限" in msg:
+            report_lines.append("- 🛡️ Fail2ban 防火墙已根据只读最小权限策略设置为免打扰（可选）")
         else:
             report_lines.append(f"- ⚠️ 防火墙巡检异常: {msg}")
 

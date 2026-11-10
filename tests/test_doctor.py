@@ -76,6 +76,15 @@ class TestSystemDoctor(unittest.TestCase):
             self.assertEqual(res["status"], "ok")
             self.assertIn("latency_ms", res)
 
+        # 测试 HTTP 405 Method Not Allowed 状态码仍可正常识别为存活
+        mock_resp.status_code = 405
+        with patch("app.doctor.settings") as mock_settings:
+            mock_settings.openai_api_base = "https://gemini.example.com/v1beta/openai"
+            mock_settings.ai_api_key = "test_key"
+            res = self.doctor.check_ai_gateway()
+            self.assertEqual(res["status"], "warning")
+            self.assertIn("405", res["message"])
+
     @patch("app.doctor.pc_power_plugin.is_enabled", return_value=True)
     def test_pc_power_check_invalid_mac(self, _):
         with patch("app.doctor.settings") as mock_settings:

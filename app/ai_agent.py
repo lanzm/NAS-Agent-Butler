@@ -40,6 +40,16 @@ class AIAgent:
         self.history = []
         self._lock = threading.RLock()
         self._mcp_client: Optional[MCPClient] = None
+        self._session: Optional[requests.Session] = None
+
+    @property
+    def session(self) -> requests.Session:
+        """获取或创建 HTTP 会话连接池（复用 TCP/TLS 握手，显著降低多轮模型交互延迟）"""
+        if self._session is None:
+            with self._lock:
+                if self._session is None:
+                    self._session = requests.Session()
+        return self._session
 
     @property
     def mcp_client(self) -> MCPClient:
@@ -58,8 +68,14 @@ class AIAgent:
         self._mcp_client = client
 
     def stop(self):
-        """安全停止并回收 MCP Client 子进程"""
+        """安全停止并回收 HTTP 连接池与 MCP Client 子进程"""
         with self._lock:
+            if self._session is not None:
+                try:
+                    self._session.close()
+                except Exception:
+                    pass
+                self._session = None
             if self._mcp_client is not None:
                 try:
                     self._mcp_client.stop()
@@ -94,7 +110,7 @@ class AIAgent:
 
         for attempt in range(retries):
             try:
-                resp = requests.post(url, headers=headers, json=req_payload, timeout=60)
+                resp = self.session.post(url, headers=headers, json=req_payload, timeout=60)
                 if resp.status_code == 429:
                     wait_time = 2.0 * (attempt + 1)
                     logger.warning(f"API 触发 429 频控，等待 {wait_time:.1f} 秒后重试...")

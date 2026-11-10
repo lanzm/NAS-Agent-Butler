@@ -151,6 +151,20 @@ class TestAIAgentChat(unittest.TestCase):
             self.assertIn("AI 模型服务响应异常", res["text"])
             self.assertIn("Connection timeout", res["text"])
 
+    @patch("app.ai_agent.MCPClient")
+    def test_session_lifecycle_and_reuse(self, _):
+        """测试 HTTP 会话连接池按需懒加载、复用并在 stop 时安全关闭"""
+        agent = AIAgent()
+        self.assertIsNone(agent._session)
+
+        s1 = agent.session
+        self.assertIsNotNone(s1)
+        s2 = agent.session
+        self.assertIs(s1, s2)
+
+        agent.stop()
+        self.assertIsNone(agent._session)
+
 
 if __name__ == "__main__":
     unittest.main()

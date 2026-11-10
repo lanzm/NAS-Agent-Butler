@@ -141,6 +141,9 @@ def clean_ai_content(raw) -> str:
 
     text = raw.strip()
 
+    # 0. 剥离深度思考/推理模型的内部思索标签 (如 <think>...</think> 或 <thought>...</thought>)
+    text = re.sub(r'<(think|thought)>[\s\S]*?(</\1>|$)', '', text).strip()
+
     # 1. 优先尝试解析 JSON 结构
     if (text.startswith("{") and text.endswith("}")) or (text.startswith("[") and text.endswith("]")):
         try:

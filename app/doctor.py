@@ -136,12 +136,14 @@ class SystemDoctor:
         try:
             resp = requests.get(probe_url, headers=headers, timeout=3.5)
             latency_ms = int((time.time() - start_t) * 1000)
-            if resp.status_code in (200, 401, 403, 404):
-                # 200 正常；401/403/404 说明至少网络握手成功、网关存活
+            if resp.status_code in (200, 401, 403, 404, 405):
+                # 200 正常；401/403/404/405 说明至少网络握手成功、网关存活
                 status = "ok" if resp.status_code == 200 else "warning"
                 msg = f"AI 模型端点连通正常（HTTP {resp.status_code}，往返延迟: {latency_ms}ms）"
                 if resp.status_code in (401, 403):
                     msg += "，但 API Key 凭据可能无效或权限不足"
+                elif resp.status_code == 405:
+                    msg += "，网关在线但该端点不支持 GET 列举（正常，支持 POST 对话）"
                 return {
                     "status": status,
                     "message": msg,
