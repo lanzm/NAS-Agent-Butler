@@ -38,10 +38,10 @@ class TestSystemDoctor(unittest.TestCase):
     @patch("app.doctor.pc_power_plugin.is_enabled", return_value=True)
     def test_pc_power_check_healthy(self, _):
         with patch("app.doctor.settings") as mock_settings:
-            mock_settings.target_pc_mac = "A0:36:BC:A9:EC:2C"
+            mock_settings.target_pc_mac = "AA:BB:CC:DD:EE:FF"
             res = self.doctor.check_pc_power()
             self.assertEqual(res["status"], "ok")
-            self.assertEqual(res["mac"], "A0:36:BC:A9:EC:2C")
+            self.assertEqual(res["mac"], "AA:BB:CC:DD:EE:FF")
 
     @patch("app.doctor.pc_power_plugin.is_enabled", return_value=False)
     def test_pc_power_check_disabled(self, _):

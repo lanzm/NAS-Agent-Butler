@@ -67,7 +67,7 @@ class SystemDoctor:
         if len(clean_mac) != 12:
             return {
                 "status": "warning",
-                "message": f"TARGET_PC_MAC 格式非法（当前值: {mac}，标准应为 12 位十六进制如 A0:36:BC:A9:EC:2C）"
+                "message": f"TARGET_PC_MAC 格式非法（当前值: {mac}，标准应为 12 位十六进制如 AA:BB:CC:DD:EE:FF）"
             }
 
         # 测试 UDP 广播套接字创建权限
