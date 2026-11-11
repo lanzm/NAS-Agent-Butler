@@ -4,7 +4,6 @@ plugins/pc_power_plugin.py - 局域网 PC 电源管理扩展插件 (WOL 唤醒�
 当且仅当 ENABLE_PC_POWER=true 时动态激活。
 """
 
-import os
 import socket
 import subprocess
 from typing import Dict, Any

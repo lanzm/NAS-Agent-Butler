@@ -11,7 +11,7 @@ import psutil
 from typing import Optional
 
 from app.docker_client import get_docker_client
-from app.utils import format_bytes, human_bytes, format_duration_chinese
+from app.utils import human_bytes, format_duration_chinese
 
 
 def calc_container_uptime(started_at_str: str) -> str:

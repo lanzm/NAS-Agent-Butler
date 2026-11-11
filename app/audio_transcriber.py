@@ -4,7 +4,6 @@ audio_transcriber.py - 通用多模态语音转录服务 (基于 Gemini 原生�
 可被飞书、Telegram 等所有前端聊天通道共享复用。
 """
 
-import os
 import base64
 import logging
 import requests

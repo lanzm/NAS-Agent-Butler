@@ -9,6 +9,12 @@ import logging
 from dataclasses import dataclass
 from typing import Optional, Any
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 logger = logging.getLogger("butler.config")
 
 

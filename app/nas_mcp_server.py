@@ -21,11 +21,10 @@ if CURRENT_DIR not in sys.path:
 import io
 import json
 import time
-import socket
 import logging
 import datetime
-import subprocess
 import re
+from html import unescape
 from typing import Dict, Any, List
 
 from app.calendar_helper import format_datetime_chinese
@@ -330,9 +329,6 @@ def execute_manage_firewall_security(args: Dict[str, Any]) -> Dict[str, Any]:
 
 def extract_clean_article_text(url: str, timeout: float = 2.5) -> str:
     """快速抓取单个目标网页并提取纯净核心正文（剔除广告、样式、导航与页脚）"""
-    import re
-    from html import unescape
-
     try:
         raw_html = fetch_public_url(url, timeout=timeout, max_bytes=250 * 1024).decode("utf-8", errors="replace")
         cleaned = re.sub(r'<(script|style|nav|header|footer|aside|form|svg|noscript|iframe)[^>]*>.*?</\1>', '', raw_html, flags=re.DOTALL | re.IGNORECASE)
@@ -358,8 +354,6 @@ def execute_search_web_info(args: Dict[str, Any]) -> Dict[str, Any]:
         return {"status": "error", "message": "搜索关键词 query 不能为空"}
     try:
         from urllib.parse import quote_plus
-        import re
-        from html import unescape
 
         url = f"https://cn.bing.com/search?q={quote_plus(query)}"
         html = fetch_public_url(url, timeout=5, max_bytes=1024 * 1024).decode("utf-8", errors="replace")

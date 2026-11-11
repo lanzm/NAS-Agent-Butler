@@ -7,19 +7,19 @@ weather_calendar_helper.py - 免 Key 实时天气 (wttr.in) 与本地农历/节�
 3. 国家法定节假日与调休补班判定。
 """
 
-import os
 import re
 import json
+import time
 import logging
 import datetime
 import urllib.request
 import urllib.parse
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 
 logger = logging.getLogger("butler.weather")
 
 from app.calendar_helper import (
-    GAN, ZHI, SHENGXIAO, MONTH_CN, DAY_CN, SOLAR_TERMS_C, get_lunar_date, get_chinese_weekday
+    GAN, ZHI, SHENGXIAO, MONTH_CN, DAY_CN, SOLAR_TERMS_C, get_lunar_date, get_chinese_weekday, get_solar_term
 )
 from app.config import settings
 
@@ -148,15 +148,8 @@ def get_calendar_info(dt: datetime.date = None) -> Dict[str, Any]:
         except Exception:
             lunar_str = "农历未知"
 
-    # 2. 节气判定
-    term_str = ""
-    for tm, td, tname in SOLAR_TERMS_C:
-        if dt.month == tm and abs(dt.day - td) <= 1:
-            term_str = tname
-            break
-        elif dt.month == tm and dt.day < td and (td - dt.day) <= 3:
-            term_str = f"距{tname}还有{td - dt.day}天"
-            break
+    # 2. 节气判定 (复用 calendar_helper 统一算法)
+    term_str = get_solar_term(dt)
 
     # 3. 法定节假日与调休判定
     holiday_desc = "普通工作日"
@@ -193,14 +186,24 @@ def get_calendar_info(dt: datetime.date = None) -> Dict[str, Any]:
     }
 
 
+# 模块级天气轻量内存缓存 (TTL: 10 分钟)，防高频调用与 wttr.in 限流
+_WEATHER_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_WEATHER_CACHE_TTL = 600.0
+
+
 def get_wttr_weather(city: str = None) -> Dict[str, Any]:
-    """调用 wttr.in 免 Key API 获取实时天气与今日预报"""
+    """调用 wttr.in 免 Key API 获取实时天气与今日预报（带 10 分钟轻量级内存缓存）"""
     default_city = settings.default_city or "北京"
     raw_city = (city or default_city).strip()
     
     # 防注入与 SSRF：严格净化城市参数，仅允许汉字、英文字母、数字和横杠空格，最长 30 字符
     query_city = re.sub(r'[^\w\u4e00-\u9fa5\s-]', '', raw_city)[:30].strip() or "北京"
     
+    now_t = time.time()
+    cached = _WEATHER_CACHE.get(query_city)
+    if cached and (now_t - cached[0] < _WEATHER_CACHE_TTL):
+        return cached[1]
+
     # 常用城市拼音映射或直接使用传入名称
     city_map = {
         "北京": "Beijing", "上海": "Shanghai", "广州": "Guangzhou",
@@ -243,7 +246,7 @@ def get_wttr_weather(city: str = None) -> Dict[str, Any]:
 
             advice = "；".join(advice_list) if advice_list else "体感舒适，适宜出行"
 
-            return {
+            res = {
                 "city": query_city,
                 "status": "success",
                 "condition": condition_zh,
@@ -255,8 +258,12 @@ def get_wttr_weather(city: str = None) -> Dict[str, Any]:
                 "advice": advice,
                 "formatted_weather": f"{query_city}今日{condition_zh}，气温 {mintemp}°C ~ {maxtemp}°C (当前 {temp_c}°C)，湿度 {humidity}%，降水概率 {rain_chance}%。{advice}。"
             }
+            _WEATHER_CACHE[query_city] = (now_t, res)
+            return res
     except Exception as e:
         logger.warning(f"获取 wttr.in 天气失败 ({query_city}): {e}")
+        if cached:
+            return cached[1]
         return {
             "city": query_city,
             "status": "fallback",

@@ -8,11 +8,9 @@ ai_agent.py - 基于标准 MCP 协议与全链路 Trace 追踪的 NAS SRE 架构
 4. 全程集成 TraceTracker 生成唯一 #tr_xxx 追踪标识与各阶段微秒级耗时统计。
 """
 
-import os
 import json
 import time
 import logging
-import datetime
 import threading
 import requests
 from typing import Dict, Any, Optional
@@ -213,7 +211,6 @@ class AIAgent:
             }
 
             last_tool_name = ""
-            last_tool_output = ""
 
             # 最多支持 3 轮工具调用迭代
             for round_idx in range(3):
@@ -289,7 +286,6 @@ class AIAgent:
 
                     last_tool_name = func_name
                     content_str = json.dumps(tool_res, ensure_ascii=False)
-                    last_tool_output = content_str
 
                     if status_callback:
                         status_callback(TaskStatus.GENERATE_REPORT)

@@ -5,7 +5,6 @@ card_builder.py - 飞书交互式消息卡片构建器 (分层渲染 + Trace 标
 并在卡片底部无缝支持渲染全链路耗时与 Trace 追踪脚标。
 """
 
-import os
 import json
 import re
 from typing import Optional
@@ -84,6 +83,17 @@ def get_i18n(key: str, default: str = "", **kwargs) -> str:
     return template_str
 
 
+# 模块级预编译正则常量（提升高频文本清洗与卡片排版渲染性能）
+_RE_CODEBLOCK = re.compile(r'(```[\s\S]*?```)')
+_RE_HR = re.compile(r'(?m)^[ \t]*[-*_]{3,}[ \t]*$')
+_RE_HEADINGS = re.compile(r'(?m)^#{1,6}\s*(.+?)\s*$')
+_RE_INLINE_CODE = re.compile(r"(?<!`)`([^`\n]+?)`(?!`)")
+_RE_LIST_SPACING = re.compile(r'(?m)^([•\-]\s*|\*\s+|\d+\.\s*)([^\n]+)\r?\n(?=[•\-]\s*|\*\s+|\d+\.\s*)')
+_RE_MULTI_NEWLINES = re.compile(r'\n{3,}')
+_RE_THINK_TAGS = re.compile(r'<(think|thought)>[\s\S]*?(</\1>|$)', re.IGNORECASE)
+_RE_JSON_TEXT_PROP = re.compile(r'"text"\s*:\s*"(.*)"', re.DOTALL)
+
+
 def format_feishu_markdown(text: str) -> str:
     """
     将标准 Markdown 格式转换为飞书卡片 Markdown 组件兼容格式：
@@ -97,7 +107,7 @@ def format_feishu_markdown(text: str) -> str:
     if not text:
         return ""
     
-    parts = re.split(r'(```[\s\S]*?```)', str(text))
+    parts = _RE_CODEBLOCK.split(str(text))
     result = []
     for part in parts:
         if part.startswith('```') and part.endswith('```'):
@@ -105,19 +115,19 @@ def format_feishu_markdown(text: str) -> str:
             result.append(part)
         else:
             # A. 彻底移除文本中裸露的分割线 (---, ***, ___ 等)，卡片分层应由原生 hr 组件负责
-            converted = re.sub(r'(?m)^[ \t]*[-*_]{3,}[ \t]*$', '', part)
+            converted = _RE_HR.sub('', part)
             
             # B. 彻底将所有层级的标题 (#, ##, ###, ####, #####) 转换为加粗文本，杜绝暴露 # 符号
-            converted = re.sub(r'(?m)^#{1,6}\s*(.+?)\s*$', r'**\1**', converted)
+            converted = _RE_HEADINGS.sub(r'**\1**', converted)
             
             # C. 处理行内单反引号 `code` 转换为中性高亮标签
-            converted = re.sub(r'(?<!`)`([^`\n]+?)`(?!`)', r"<text_tag color='neutral'>\1</text_tag>", converted)
+            converted = _RE_INLINE_CODE.sub(r"<text_tag color='neutral'>\1</text_tag>", converted)
 
             # D. 优化列表呼吸间距：确保列表项（• 或 - 或 1. 2.）之间空一行，杜绝条目挤压堆积
-            converted = re.sub(r'(?m)^([•\-]\s*|\*\s+|\d+\.\s*)([^\n]+)\r?\n(?=[•\-]\s*|\*\s+|\d+\.\s*)', r'\1\2\n\n', converted)
+            converted = _RE_LIST_SPACING.sub(r'\1\2\n\n', converted)
 
             # E. 处理多余的连续空白换行（最多保留双换行即单个空行）
-            converted = re.sub(r'\n{3,}', '\n\n', converted)
+            converted = _RE_MULTI_NEWLINES.sub('\n\n', converted)
             
             result.append(converted)
             
@@ -144,7 +154,7 @@ def clean_ai_content(raw) -> str:
     text = raw.strip()
 
     # 0. 剥离深度思考/推理模型的内部思索标签 (如 <think>...</think> 或 <thought>...</thought>)
-    text = re.sub(r'<(think|thought)>[\s\S]*?(</\1>|$)', '', text).strip()
+    text = _RE_THINK_TAGS.sub('', text).strip()
 
     # 1. 优先尝试解析 JSON 结构
     if (text.startswith("{") and text.endswith("}")) or (text.startswith("[") and text.endswith("]")):
@@ -162,7 +172,7 @@ def clean_ai_content(raw) -> str:
     # 2. 正则兜底防御：若存在 "text": "..."
     if text.startswith("{") and '"text"' in text:
         try:
-            m = re.search(r'"text"\s*:\s*"(.*)"', text, re.DOTALL)
+            m = _RE_JSON_TEXT_PROP.search(text)
             if m:
                 text = m.group(1)
         except Exception:

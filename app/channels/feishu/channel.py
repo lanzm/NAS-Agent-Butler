@@ -4,7 +4,6 @@ channel.py - 飞书通道实现 (FeishuChannel)
 实现基于官方 WebSocket 长连接的双向交互、多模态消息处理、状态动画与交互卡片无感刷新。
 """
 
-import os
 import json
 import time
 import base64
