@@ -26,7 +26,7 @@ except ImportError:
 
 from app.collector import SystemCollector
 from app.action_handler import ActionHandler
-from app.channels import ChannelManager, FeishuChannel
+from app.channels import ChannelManager, FeishuChannel, TelegramChannel
 from app.card_builder import (
     build_status_card,
     build_ai_response_card,
@@ -69,9 +69,9 @@ channel_manager = ChannelManager()
 feishu_channel = FeishuChannel(action_handler)
 channel_manager.register(feishu_channel)
 
-# 2. [预留通道扩展位] 未来的 Telegram / 企微等通道直接在此注册：
-# tg_channel = TelegramChannel(action_handler)
-# channel_manager.register(tg_channel)
+# 2. 注册 Telegram 通道 (若配置有效则自动激活)
+telegram_channel = TelegramChannel(action_handler)
+channel_manager.register(telegram_channel)
 
 # --- 报警状态记录（加锁保障调度线程与回调并发安全） ---
 _alarm_lock = threading.Lock()

@@ -75,6 +75,11 @@ class ButlerConfig:
     feishu_receive_id: str = ""
     feishu_receive_id_type: str = "open_id"
 
+    # Telegram 凭据 (海外通道)
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+    telegram_proxy: str = ""
+
     # 插件：防火墙配置
     fail2ban_container_name: str = ""
     fail2ban_jail: str = "caddy-services"
@@ -109,6 +114,9 @@ class ButlerConfig:
             feishu_app_secret=get_str("FEISHU_APP_SECRET", ""),
             feishu_receive_id=get_str("FEISHU_RECEIVE_ID", ""),
             feishu_receive_id_type=get_str("FEISHU_RECEIVE_ID_TYPE", "open_id") or "open_id",
+            telegram_bot_token=get_str("TELEGRAM_BOT_TOKEN", ""),
+            telegram_chat_id=get_str("TELEGRAM_CHAT_ID", ""),
+            telegram_proxy=get_str("TELEGRAM_PROXY", ""),
             fail2ban_container_name=get_str("FAIL2BAN_CONTAINER_NAME", ""),
             fail2ban_jail=get_str("FAIL2BAN_JAIL", "caddy-services") or "caddy-services",
             aria2_rpc_url=get_str("ARIA2_RPC_URL", ""),
