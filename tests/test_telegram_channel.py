@@ -56,6 +56,15 @@ class TestTelegramChannel(unittest.TestCase):
         self.assertIn('<a href="https://github.com/lanzm/NAS-Agent-Butler">官网</a>', res)
         self.assertIn('<pre><code class="language-python">if x &lt; 10 and y &gt; 2:\n    print(\'OK\')\n</code></pre>', res)
 
+        # 验证算式中的星号不会被误转为加粗
+        math_res = convert_markdown_to_telegram_html("算式: 2 * 3 * 4")
+        self.assertIn("2 * 3 * 4", math_res)
+        self.assertNotIn("<b>", math_res)
+
+        # 验证 URL 中含有引号时的安全转义
+        quote_link_res = convert_markdown_to_telegram_html('[链接](https://example.com/test"safe)')
+        self.assertIn('<a href="https://example.com/test%22safe">链接</a>', quote_link_res)
+
     def test_card_to_telegram_payload_conversion(self):
         """测试卡片格式转换为 Telegram HTML 与内联键盘 (Inline Keyboard)"""
         card_data = {

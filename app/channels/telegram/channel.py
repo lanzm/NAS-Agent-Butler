@@ -10,7 +10,6 @@ channel.py - Telegram 通道实现 (TelegramChannel)
 
 import re
 import html
-import json
 import time
 import logging
 import threading
@@ -29,7 +28,7 @@ _RE_FONT_TAG = re.compile(r"<font[^>]*>(.*?)</font>", re.IGNORECASE)
 _RE_CODE_BLOCK = re.compile(r"```([a-zA-Z0-9_\+\-]*)?\n?([\s\S]*?)```")
 _RE_INLINE_CODE = re.compile(r"`([^`\n]+)`")
 _RE_BOLD_DOUBLE = re.compile(r"\*\*([^\*\n]+?)\*\*")
-_RE_BOLD_SINGLE = re.compile(r"(?<!\w)\*([^\*\n]+?)\*(?!\w)")
+_RE_BOLD_SINGLE = re.compile(r"(?<!\w)\*(?!\s)([^\*\n]+?)(?<!\s)\*(?!\w)")
 _RE_LINK = re.compile(r"\[([^\]]+)\]\((https?://[^\s\)]+)\)")
 
 
@@ -79,7 +78,12 @@ def convert_markdown_to_telegram_html(text: str) -> str:
     # 5. 解析 Markdown 格式语法 (加粗、强调、链接)
     text = _RE_BOLD_DOUBLE.sub(r"<b>\1</b>", text)
     text = _RE_BOLD_SINGLE.sub(r"<b>\1</b>", text)
-    text = _RE_LINK.sub(r'<a href="\2">\1</a>', text)
+
+    def _format_link(match: re.Match) -> str:
+        safe_url = match.group(2).replace('"', '%22')
+        return f'<a href="{safe_url}">{match.group(1)}</a>'
+
+    text = _RE_LINK.sub(_format_link, text)
 
     # 6. 还原行内代码与代码块
     for i, code_html in enumerate(inline_codes):
@@ -276,19 +280,6 @@ class TelegramChannel(BaseChannel):
             logger.error(f"Telegram 编辑消息异常: {e}")
             return False
 
-        try:
-            resp = self.session.post(url, json=payload, timeout=15)
-            if resp.status_code == 200:
-                return True
-            if resp.status_code == 400:
-                payload.pop("parse_mode", None)
-                fb = self.session.post(url, json=payload, timeout=15)
-                return fb.status_code == 200
-            return False
-        except Exception as e:
-            logger.error(f"Telegram 编辑消息异常: {e}")
-            return False
-
     def _handle_incoming_message(self, msg: dict):
         """处理用户私聊或群聊文本输入"""
         chat = msg.get("chat", {})
@@ -408,9 +399,19 @@ class TelegramChannel(BaseChannel):
                             self._last_update_id = up_id
 
                         if "message" in update:
-                            self._handle_incoming_message(update["message"])
+                            threading.Thread(
+                                target=self._handle_incoming_message,
+                                args=(update["message"],),
+                                daemon=True,
+                                name=f"TgMsg-{up_id}"
+                            ).start()
                         elif "callback_query" in update:
-                            self._handle_incoming_callback(update["callback_query"])
+                            threading.Thread(
+                                target=self._handle_incoming_callback,
+                                args=(update["callback_query"],),
+                                daemon=True,
+                                name=f"TgCb-{up_id}"
+                            ).start()
                 elif resp.status_code in (401, 404):
                     logger.error(f"Telegram Bot Token 无效或未找到，停止监听循环 [HTTP {resp.status_code}]")
                     break

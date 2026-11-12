@@ -136,11 +136,18 @@ def load_scheduled_tasks() -> list:
 def check_broadcast_delivery(results: Dict[str, bool], context_name: str):
     """检查广播送达状态，未送达且缺少接收者时输出针对性操作指引"""
     if not results or not any(results.values()):
+        guidance = []
+        active_names = [c.name for c in channel_manager.get_active_channels()] if "channel_manager" in globals() else []
+        if "telegram" in active_names:
+            guidance.append("【Telegram】向机器人发送 /start 指令自动绑定 chat_id，或在 .env 设置 TELEGRAM_CHAT_ID")
+        if "feishu" in active_names or not active_names or not guidance:
+            guidance.append("【飞书】直接向机器人发送任意问候消息自动绑定 open_id，或在 .env 显式指定 FEISHU_RECEIVE_ID=ou_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+
+        guide_str = "；".join(guidance)
         logger.warning(
             f"⚠️ [{context_name}] 广播推送未成功送达任何目标用户！"
-            f"主要原因：系统尚未绑定目标用户的 open_id。"
-            f"【操作指引】：请在飞书中直接向机器人发送任意问候消息（管家将全自动记忆绑定您的 open_id 并完成闭环），"
-            f"或在 .env 中显式指定 FEISHU_RECEIVE_ID=ou_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx。"
+            f"主要原因：系统尚未绑定目标用户的 open_id 或 chat_id。"
+            f"【操作指引】：{guide_str}。"
         )
 
 
